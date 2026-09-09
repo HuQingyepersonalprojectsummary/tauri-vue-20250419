@@ -41,6 +41,8 @@ tauri = { version = "1.5", features = [
 ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 用于正确解码 Windows 本地控制台/netsh 输出 (GBK / UTF-8)
+encoding_rs = "0.8"
 # 使用编译时正则表达式优化
 regex = { version = "1.10.4", features = ["std"], default-features = false }
 

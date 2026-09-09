@@ -1,0 +1,570 @@
+{
+  "scope": "actual Rust transaction/rollback code; process and snapshot dependencies mocked; not native integration",
+  "platformSha256": "6e43b125c858a96d4ec7d6bb6c54f1c656c776463c7337541a6439287d6a1b25",
+  "domainSha256": "529cc2dc8b1bdb1585208a3a4e40008f0145228fd9ad7700b80a80dac34741ac",
+  "observations": [
+    {
+      "case": "dns_timeout",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.254"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ]
+      ],
+      "id": "R-01",
+      "result": {
+        "Ok": {
+          "message": "执行设置首选 DNS 异常: fixture DNS timeout",
+          "rollbackMessage": "DNS 设置失败，已自动回滚全部配置至修改前状态。",
+          "rolledBack": true,
+          "snapshot": {
+            "adapterName": "fixture",
+            "addresses": [
+              {
+                "ipAddress": "192.0.2.20",
+                "mask": "255.255.255.0",
+                "prefixLength": 24
+              }
+            ],
+            "dhcpEnabled": false,
+            "dns1": "192.0.2.53",
+            "dns2": "",
+            "dnsDhcpEnabled": false,
+            "dnsServers": [
+              "192.0.2.53"
+            ],
+            "gateway": "192.0.2.1",
+            "gateways": [
+              "192.0.2.1"
+            ],
+            "interfaceGuid": "fixture-guid",
+            "interfaceIndex": 7,
+            "ip": "192.0.2.20",
+            "mask": "255.255.255.0",
+            "status": "Up"
+          },
+          "success": false
+        }
+      },
+      "snapshotReads": 2
+    },
+    {
+      "case": "readback_failure",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.254"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ]
+      ],
+      "id": "R-02",
+      "result": {
+        "Ok": {
+          "message": "读回配置快照失败: fixture snapshot unavailable",
+          "rollbackMessage": "读回校验未通过，已自动执行安全回滚。",
+          "rolledBack": true,
+          "snapshot": null,
+          "success": false
+        }
+      },
+      "snapshotReads": 12
+    },
+    {
+      "case": "wrong_dns_and_gateway",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.254"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ]
+      ],
+      "id": "R-02",
+      "result": {
+        "Ok": {
+          "message": "读回校验未通过 (网关未匹配, 首选DNS未匹配)",
+          "rollbackMessage": "读回校验未通过，已自动执行安全回滚。",
+          "rolledBack": true,
+          "snapshot": {
+            "adapterName": "fixture",
+            "addresses": [
+              {
+                "ipAddress": "192.0.2.20",
+                "mask": "255.255.255.0",
+                "prefixLength": 24
+              }
+            ],
+            "dhcpEnabled": false,
+            "dns1": "192.0.2.53",
+            "dns2": "",
+            "dnsDhcpEnabled": false,
+            "dnsServers": [
+              "192.0.2.53"
+            ],
+            "gateway": "192.0.2.1",
+            "gateways": [
+              "192.0.2.1"
+            ],
+            "interfaceGuid": "fixture-guid",
+            "interfaceIndex": 7,
+            "ip": "192.0.2.20",
+            "mask": "255.255.255.0",
+            "status": "Up"
+          },
+          "success": false
+        }
+      },
+      "snapshotReads": 12
+    },
+    {
+      "case": "rollback_dns_failure",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.254"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ]
+      ],
+      "id": "R-03",
+      "result": {
+        "Ok": {
+          "message": "设置首选 DNS 失败: fixture apply DNS failure",
+          "rollbackMessage": "DNS 设置失败，且回滚失败: 执行恢复首选DNS异常: fixture rollback DNS failure。请手动检查网络配置！",
+          "rolledBack": false,
+          "snapshot": {
+            "adapterName": "fixture",
+            "addresses": [
+              {
+                "ipAddress": "192.0.2.20",
+                "mask": "255.255.255.0",
+                "prefixLength": 24
+              }
+            ],
+            "dhcpEnabled": false,
+            "dns1": "192.0.2.53",
+            "dns2": "",
+            "dnsDhcpEnabled": false,
+            "dnsServers": [
+              "192.0.2.53"
+            ],
+            "gateway": "192.0.2.1",
+            "gateways": [
+              "192.0.2.1"
+            ],
+            "interfaceGuid": "fixture-guid",
+            "interfaceIndex": 7,
+            "ip": "192.0.2.20",
+            "mask": "255.255.255.0",
+            "status": "Up"
+          },
+          "success": false
+        }
+      },
+      "snapshotReads": 2
+    },
+    {
+      "case": "dns2_without_dns1",
+      "commands": [],
+      "id": "R-02",
+      "result": {
+        "Err": "若配置辅助 DNS，必须先配置首选 DNS (DNS1)"
+      },
+      "snapshotReads": 0
+    },
+    {
+      "case": "multi_address_restore_only_uses_first_address_gateway_and_two_dns",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "address",
+          "name=\"fixture\"",
+          "198.51.100.10",
+          "255.255.255.0"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "198.51.100.53",
+          "index=2"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "203.0.113.53",
+          "index=3"
+        ]
+      ],
+      "id": "R-03",
+      "result": {
+        "Ok": null
+      },
+      "snapshotReads": 0
+    },
+    {
+      "case": "rollback_returns_Ok_even_when_both_DNS_restore_calls_error",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "address",
+          "name=\"fixture\"",
+          "198.51.100.10",
+          "255.255.255.0"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "198.51.100.53",
+          "index=2"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "203.0.113.53",
+          "index=3"
+        ]
+      ],
+      "id": "R-03",
+      "result": {
+        "Err": "执行恢复首选DNS异常: fixture rollback DNS failure; 执行恢复辅助DNS (198.51.100.53) 异常: fixture rollback DNS failure; 执行恢复辅助DNS (203.0.113.53) 异常: fixture rollback DNS failure"
+      },
+      "snapshotReads": 0
+    },
+    {
+      "case": "ip_dhcp_forces_dns_dhcp_regardless_of_original_dns_mode",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "source=dhcp"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "198.51.100.53",
+          "index=2"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "203.0.113.53",
+          "index=3"
+        ]
+      ],
+      "id": "R-03",
+      "result": {
+        "Ok": null
+      },
+      "snapshotReads": 0
+    },
+    {
+      "case": "empty_static_state_DNS_failure",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "source=dhcp"
+        ]
+      ],
+      "id": "R-03",
+      "result": {
+        "Ok": null
+      },
+      "snapshotReads": 0
+    },
+    {
+      "case": "wrong_DNS_order_mode_and_adapter_identity",
+      "commands": [
+        [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.254"
+        ],
+        [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        [
+          "interface",
+          "ip",
+          "add",
+          "dns",
+          "name=\"fixture\"",
+          "203.0.113.53",
+          "index=2"
+        ]
+      ],
+      "id": "R-02",
+      "result": {
+        "Ok": {
+          "message": "IPv4 配置已成功应用并通过读回校验",
+          "rollbackMessage": null,
+          "rolledBack": false,
+          "snapshot": {
+            "adapterName": "fixture",
+            "addresses": [
+              {
+                "ipAddress": "192.0.2.20",
+                "mask": "255.255.255.0",
+                "prefixLength": 24
+              }
+            ],
+            "dhcpEnabled": false,
+            "dns1": "192.0.2.53",
+            "dns2": "",
+            "dnsDhcpEnabled": true,
+            "dnsServers": [
+              "203.0.113.53",
+              "198.51.100.53"
+            ],
+            "gateway": "192.0.2.1",
+            "gateways": [
+              "192.0.2.254"
+            ],
+            "interfaceGuid": "different-adapter-guid",
+            "interfaceIndex": 7,
+            "ip": "192.0.2.20",
+            "mask": "255.255.255.0",
+            "status": "Up"
+          },
+          "success": true
+        }
+      },
+      "snapshotReads": 2
+    },
+    {
+      "absolute": true,
+      "case": "missing_trusted_path_falls_back_to_relative_name",
+      "executed": false,
+      "id": "R-06",
+      "path": "C:\\Windows\\System32\\netsh.exe"
+    }
+  ]
+}

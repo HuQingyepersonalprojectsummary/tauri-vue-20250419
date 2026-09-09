@@ -1,0 +1,76 @@
+export interface AdapterInfo {
+  name: string;
+  status: string;
+  rawStatus?: string;
+  displayName?: string;
+  interfaceIndex?: number;
+  interfaceGuid?: string;
+  macAddress?: string;
+}
+
+export interface Ipv4AddressConfig {
+  ipAddress: string;
+  prefixLength: number;
+  mask: string;
+}
+
+export interface DohConfig {
+  mode: 'off' | 'auto' | 'manual';
+  template: string;
+  allowFallback: boolean;
+}
+
+export interface AdapterSnapshot {
+  adapterName: string;
+  interfaceIndex: number;
+  interfaceGuid: string;
+  status: string;
+  dhcpEnabled: boolean;
+  dnsDhcpEnabled?: boolean;
+  addresses: Ipv4AddressConfig[];
+  gateways: string[];
+  dnsServers: string[];
+  ip: string;
+  mask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  doh1?: DohConfig;
+  doh2?: DohConfig;
+  ipv6Enabled?: boolean;
+}
+
+export interface Ipv4Config {
+  adapter: string;
+  ip: string;
+  mask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  doh1?: DohConfig;
+  doh2?: DohConfig;
+  ipv6Enabled?: boolean;
+}
+
+export interface OperationResult {
+  success: boolean;
+  message: string;
+  rolledBack: boolean;
+  rollbackMessage?: string;
+  snapshot?: AdapterSnapshot;
+}
+
+export interface HistoryItem {
+  schemaVersion: number;
+  id: string;
+  timestamp: number;
+  adapter: string;
+  ip: string;
+  mask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  doh1?: DohConfig;
+  doh2?: DohConfig;
+  ipv6Enabled?: boolean;
+}

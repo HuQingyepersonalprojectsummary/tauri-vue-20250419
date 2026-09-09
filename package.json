@@ -8,10 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "rebuild": "tauri build --config src-tauri/tauri.conf.json",
-    "clean": "rimraf src-tauri/target",
-    "build:app": "node build.js",
-    "package": "node package.js"
+    "typecheck": "vue-tsc --noEmit",
+    "clean": "rimraf src-tauri/target dist"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",

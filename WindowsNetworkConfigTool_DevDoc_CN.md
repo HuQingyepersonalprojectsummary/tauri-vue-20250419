@@ -4,174 +4,197 @@
 
 ## 🏁 一、项目简介
 
-本项目基于 [Tauri](https://tauri.app/) + [Vue3](https://vuejs.org/) 技术栈开发，旨在提供一个简单易用的 Windows 网络适配器 IPv4 配置工具。用户可通过图形界面查看、修改本机网络适配器的 IPv4 地址、子网掩码、网关及 DNS，并支持配置历史记录。
+本项目基于 [Tauri](https://tauri.app/) + [Vue 3](https://vuejs.org/) 技术栈开发，为 Windows 用户提供安全、直观、可靠的网络适配器配置工具。用户可通过图形界面查看、修改本机网络适配器的：
+- **IPv4 地址与掩码**（支持严格连续二进制掩码校验与零前导校验）
+- **默认网关**（支持同网段可达性校验）
+- **常规 DNS 服务器**（首选与备用 DNS 依赖关系校验）
+- **DNS over HTTPS (DoH) 加密解析**（开/关、开(自动)、开(手动模板) 及未加密请求回退）
+- **IPv6 协议组件绑定状态**（安全启用或禁用适配器 `ms_tcpip6` 协议）
+- **常用公共 DNS / DoH 一键预设**（阿里 DNS、腾讯 DNSPod、Cloudflare、Google）
+- **带版本校验与安全持久化的配置历史记录**（上限 10 条）
 
-## 二、搭建与设计理念
+---
+
+## 二、架构设计与安全理念
+
+```mermaid
+flowchart TD
+  UI[Vue 3 前端界面] -->|类型化 IPC| IPC[Tauri Commands]
+  IPC -->|串行写锁 NetworkLock| S[事务编排与校验 domain.rs]
+  S -->|stdin JSON 无注入管道| P[PowerShell 快照提取: IPv4 + IPv6 + DoH]
+  S -->|可信 System32 路径| N[netsh.exe 应用 IPv4 地址与网关]
+  S -->|可信 System32 路径| D[PowerShell 配置 DoH 与 IPv6 绑定]
+  D -->|读回校验或步骤失败| R[自动安全回滚至修改前快照 (含 IPv4/IPv6/DoH)]
+  D -->|读回校验完全一致| V[确认成功并返回前端]
+```
 
 ### 1. 技术选型
-- **前端**：Vue 3 + Vite，提供响应式、现代化的界面体验。
-- **后端/桌面容器**：Tauri，利用 Rust 实现系统级操作，安全、高效，最终打包为原生 Windows 应用。
+- **前端**：Vue 3 Composition API (`<script setup lang="ts">`) + TypeScript + Vite，提供现代响应式布局、Windows 11 Fluent 风格控件与无障碍表单体验。
+- **后端/桌面容器**：Tauri 1 (Rust)，严格遵循系统安全与参数分离原则，打包为原生 Windows 轻量桌面应用。
 
-### 2. 设计理念
-- **安全性**：Tauri 采用最小权限原则，tauri.conf.json 配置中仅允许必要的 API 权限。
-- **易用性**：界面简洁直观，主要操作一目了然。
-- **历史记录**：本地保存最近 10 条配置，便于快速切换。
-- **跨平台**：虽然当前主要面向 Windows，但架构设计兼容其他平台。
+### 2. 核心安全与可靠性设计
+- **防代码注入 (A-01)**：所有外部进程均采用固定静态脚本，参数通过标准输入 (stdin JSON) 安全传输，不进行任何动态脚本文本拼接。
+- **防止可执行文件劫持 (A-12)**：系统命令优先定位 `SystemRoot\System32` 绝对路径 (`powershell.exe`、`netsh.exe`)，不依赖环境变量 `PATH`。
+- **事务性变更与读回校验 (A-03)**：变更前先采集原配置完整快照（包含 IPv4、网关、DNS、IPv6 绑定与 DoH 状态）；变更后主动读回系统配置确认生效；若步骤失败或读回不匹配，自动尝试还原现场，避免网络中断。
+- **并发写锁与异步防阻塞 (A-04)**：后端引入 `NetworkLock` 全局锁，写操作互斥串行化；耗时系统调用置于独立任务调度，并施加超时回收限制。
+- **严格网络语义校验 (A-06)**：前后端对齐严谨的 IPv4 校验（拒绝前导零）、连续二进制掩码校验（拒绝 `255.0.255.0` 等无效掩码）、网关同网段校验以及 DoH HTTPS 协议安全校验。
+- **网卡草稿独立绑定 (A-08)**：表单草稿与网卡身份绑定，切换网卡自动同步目标状态，杜绝跨网卡误配置。
+- **历史记录安全隔离 (A-09, A-10)**：结构化校验版本 (`schemaVersion: 1`)，最多保留 10 条有效记录；本地存储异常仅提示警告，不误报网络配置失败。
 
-## 三、主要功能实现
+---
 
-### 1. 网络适配器信息获取
-- 通过 Tauri 后端（Rust）调用系统 API，获取所有网络适配器列表。
-- 前端通过 `@tauri-apps/api/tauri` 的 `invoke` 方法调用 Rust 命令。
-
-### 2. IPv4 配置修改
-- 用户选择适配器，填写 IP、子网掩码、网关、DNS，点击“应用配置”按钮。
-- 前端校验格式，调用 Tauri 后端命令，实际修改系统网络配置。
-
-### 3. 历史配置管理
-- 每次成功应用配置后，将该配置保存到 localStorage。
-- 最多保留 10 条历史，支持一键应用历史配置。
-
-### 4. 状态提示与异常处理
-- 所有操作均有状态提示，失败时高亮显示错误信息。
-- 异常静默处理，尽量不打断用户流程。
-
-## 四、项目结构说明
+## 三、项目结构说明
 
 ```
-├── src/              # 前端 Vue3 源码
-│   ├── App.vue       # 主界面与核心逻辑
-│   └── main.ts       # 入口文件
-├── src-tauri/        # Tauri 后端（Rust）相关
-│   └── tauri.conf.json # Tauri 配置
-├── public/           # 静态资源
-├── dist/             # 前端打包输出
-├── package.json      # 前端依赖与脚本
-├── vite.config.ts    # Vite 配置
-├── README.md         # 简要说明
-├── releases/         # 安装包
+├── src/
+│   ├── types/
+│   │   └── network.ts            # 前端 DTO 接口定义 (含 DohConfig, AdapterSnapshot)
+│   ├── utils/
+│   │   └── validation.ts         # IPv4、连续掩码及网关子网校验
+│   ├── services/
+│   │   └── networkClient.ts      # 类型化 Tauri IPC 调用层
+│   ├── composables/
+│   │   ├── useNetworkConfig.ts   # 网卡选择、DoH / IPv6 状态草稿隔离与应用状态管理
+│   │   └── useConfigHistory.ts   # 历史记录校验、持久化与异常隔离
+│   ├── App.vue                   # 页面排版、Fluent 控件与交互组件
+│   └── main.ts                   # 前端应用入口
+├── src-tauri/
+│   ├── src/
+│   │   ├── domain.rs             # 领域模型、DoH 与 IPv4 算法与单元测试
+│   │   ├── platform.rs           # 可信路径、防注入脚本、DoH/IPv6 管理与事务回滚
+│   │   ├── lib.rs                # Tauri 命令注册与全局写锁
+│   │   └── main.rs               # 后端主入口
+│   └── tauri.conf.json           # Tauri 配置 (含安全 CSP)
+├── docs/                         # 审计与重构报告归档
+├── releases/                     # 便携版可执行程序输出目录
+├── package.json                  # 前端依赖与脚本
+├── vite.config.ts                # Vite 配置
+├── build-app.bat                 # 一键编译构建脚本
+├── 打包说明.md                   # 便携版与安装包打包指南
+└── README.md                     # 项目概览
 ```
 
-## 五、开发与运行
+---
+
+## 四、API 接口契约说明
+
+### 1. 获取网络适配器列表
+- **命令名**：`get_network_adapters`
+- **入参**：无
+- **出参**：`Vec<AdapterInfo>`
+```typescript
+interface AdapterInfo {
+  name: string;             // 适配器名称 (如 "以太网")
+  status: string;           // 格式化友好状态
+  rawStatus?: string;       // 原始状态 (Up, Disconnected 等)
+  displayName?: string;     // 设备描述
+  interfaceIndex?: number;  // 接口索引
+  interfaceGuid?: string;   // 接口唯一 GUID
+}
+```
+
+### 2. 获取当前适配器完整快照
+- **命令名**：`get_current_config`
+- **入参**：`{ adapterName: string }`
+- **出参**：`AdapterSnapshot`
+```typescript
+interface DohConfig {
+  mode: 'off' | 'auto' | 'manual'; // DoH 模式
+  template: string;                // HTTPS 模板 URL
+  allowFallback: boolean;          // 是否允许降级为未加密 UDP 请求
+}
+
+interface AdapterSnapshot {
+  adapterName: string;
+  interfaceIndex: number;
+  interfaceGuid: string;
+  status: string;
+  dhcpEnabled: boolean;
+  addresses: { ipAddress: string; prefixLength: number; mask: string }[];
+  gateways: string[];
+  dnsServers: string[];
+  ip: string;
+  mask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  doh1?: DohConfig;       // 首选 DNS 的 DoH 状态
+  doh2?: DohConfig;       // 备用 DNS 的 DoH 状态
+  ipv6Enabled?: boolean;  // IPv6 组件 (ms_tcpip6) 是否启用
+}
+```
+
+### 3. 事务式应用网络配置
+- **命令名**：`apply_adapter_ipv4_config`
+- **入参**：`{ cfg: Ipv4Config }`
+```typescript
+interface Ipv4Config {
+  adapter: string;
+  ip: string;
+  mask: string;
+  gateway: string;        // 可选，留空时不配置默认网关
+  dns1: string;           // 可选，留空时不修改 DNS
+  dns2: string;           // 可选
+  doh1?: DohConfig;       // 首选 DoH 配置
+  doh2?: DohConfig;       // 备用 DoH 配置
+  ipv6Enabled?: boolean;  // IPv6 绑定开关
+}
+```
+- **出参**：`OperationResult`
+```typescript
+interface OperationResult {
+  success: boolean;            // 是否完全成功生效
+  message: string;            // 详细结果说明
+  rolledBack: boolean;        // 是否触发了安全回滚
+  rollbackMessage?: string;   // 回滚状态描述
+  snapshot?: AdapterSnapshot; // 读回校验后的最新状态快照
+}
+```
+
+---
+
+## 五、开发与构建
 
 ### 1. 安装依赖
 ```bash
-yarn install
+npm install
+# 或使用 yarn:
+# yarn install
 ```
 
-### 2. 本地开发
+### 2. 本地开发 (启动前端与桌面窗口)
 ```bash
-yarn tauri dev
+npm run tauri dev
+# 或:
+# yarn tauri dev
 ```
 
-### 3. 前端独立开发（不启用 Tauri，仅调试界面）
+### 3. 前端独立开发调试
 ```bash
-yarn dev
+npm run dev
 ```
 
-## 六、打包与发布
-
-详细打包方法见 `打包说明.md`，核心流程如下：
-
-### 1. 构建前端
+### 4. 前端类型检查与构建
 ```bash
-yarn build
+npm run typecheck
+npm run build
 ```
 
-### 2. 构建/打包后端
+### 5. 后端编译与单元测试
 ```bash
 cd src-tauri
-cargo build --release
-cd ..
-# 或使用 Tauri CLI（生成便携版或MSI安装包）
-yarn tauri build --target app
-# 或
-yarn tauri build --target msi
+cargo test
+cargo check
 ```
 
-### 3. 其他说明
-- 打包 32 位需先安装 32 位 Rust 工具链：`rustup target add i686-pc-windows-msvc`
-- 打包 MSI 安装包需安装 [WiX Toolset](https://wixtoolset.org/releases/)
-- 详细参数和注意事项见 `打包说明.md`
-
-## 七、常见问题与建议
-- **权限不足**：部分操作需管理员权限，建议以管理员身份运行。
-- **依赖缺失**：确保已安装 Node.js、Yarn、Rust、Tauri CLI。
-- **网络适配器列表为空**：请检查系统网络服务是否正常。
-
-## 八、参考与致谢
-- [Tauri 官方文档](https://tauri.app/zh-cn/docs/)
-- [Vue 官方文档](https://cn.vuejs.org/)
-
----
-
-## 九、API 交互与核心代码说明
-
-### 1. 前端与后端通信（Tauri invoke）
-
-```typescript
-import { invoke } from '@tauri-apps/api/tauri';
-const adapters = await invoke<AdapterInfo[]>("get_network_adapters");
-const msg = await invoke<string>("apply_adapter_ipv4_config", { cfg: ipConfig });
-const current = await invoke<IpConfig>("get_current_config", { adapter_name: selectedAdapter });
+### 6. 一键打包 Release 便携版
+运行根目录下脚本：
+```cmd
+build-app.bat
 ```
-
-#### invoke 方法签名
-```typescript
-function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+或执行：
+```bash
+npm run build
+cd src-tauri && cargo build --release
 ```
-
-### 2. 后端 Rust 命令接口说明
-
-- `get_network_adapters`：返回所有网络适配器
-- `get_current_config(adapter_name: String)`：返回 IPv4 配置
-- `apply_adapter_ipv4_config(cfg: Ipv4Config)`：应用 IPv4 配置
-
-#### 结构体示例
-```rust
-pub struct AdapterInfo {
-    pub name: String,    // 适配器名称
-    pub status: String,  // 显示名称（含状态）
-}
-
-pub struct Ipv4Config {
-    pub adapter: String,
-    pub ip: String,
-    pub mask: String,
-    pub gateway: String,
-    pub dns1: String,
-    pub dns2: String,
-}
-```
-
----
-
-## 十、如何用 GitHub CLI 上传安装包到 GitHub Releases
-
-1. **登录 GitHub CLI**
-   ```bash
-   gh auth login
-   ```
-   按提示选择 GitHub.com、HTTPS、浏览器授权。
-
-2. **创建 Release 并上传安装包**
-   ```bash
-   gh release create v1.0.0 "releases/Network_adapter_IP4_information_modification (Run_with_administrator_privileges).exe" --title "v1.0.0" --notes "首个发布版本"
-   ```
-   - `v1.0.0` 是 tag 名，可自定义
-   - `--title` 为 Release 标题
-   - `--notes` 为 Release 描述
-
-   或上传到已存在的 Release：
-   ```bash
-   gh release upload v1.0.0 "releases/Network_adapter_IP4_information_modification (Run_with_administrator_privileges).exe"
-   ```
-
-3. **检查结果**
-   发布后访问你的仓库 Releases 页面即可下载。
-
-> 注意：安装包名有空格时路径需用英文引号包裹。
-
----
-
-如需进一步了解 Rust 后端实现，可参考 `src-tauri/src/lib.rs`，每个命令均有详细注释。
+编译产物位于 `src-tauri/target/release/tauri-vue-20250419.exe`。

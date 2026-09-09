@@ -3002,6 +3002,7 @@ dependencies = [
 name = "tauri-vue-20250419"
 version = "0.1.0"
 dependencies = [
+ "encoding_rs",
  "regex",
  "serde",
  "serde_json",

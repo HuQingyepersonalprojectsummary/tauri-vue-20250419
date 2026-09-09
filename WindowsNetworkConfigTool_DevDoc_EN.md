@@ -4,174 +4,197 @@
 
 ## 🏁 1. Project Overview
 
-This project is built with [Tauri](https://tauri.app/) + [Vue3](https://vuejs.org/), aiming to provide a simple and user-friendly Windows network adapter IPv4 configuration tool. Users can view and modify IPv4 addresses, subnet masks, gateways, and DNS for local network adapters via a GUI, with history support.
+This project is built using [Tauri](https://tauri.app/) (Rust) + [Vue 3](https://vuejs.org/) (TypeScript), designed to provide a secure, intuitive, and highly reliable network adapter configuration tool for Windows.
+Users can view and configure:
+- **IPv4 Address & Subnet Mask** (with strict non-leading-zero checks and contiguous binary mask validation).
+- **Default Gateway** (with subnet reachability validation).
+- **DNS Servers** (Primary and Secondary DNS dependency checks).
+- **DNS over HTTPS (DoH)** (Off, Auto, Manual template URL, and unencrypted UDP fallback toggle).
+- **IPv6 Protocol Component Binding** (Safely enable or disable adapter `ms_tcpip6` binding).
+- **Public DNS & DoH Presets** (One-click fill for AliDNS, DNSPod, Cloudflare, and Google).
+- **Secure Persistent History** (Versioned schema, max 10 records, independent storage fault isolation).
 
-## 2. Setup & Design Philosophy
+---
+
+## 2. Architecture & Safety Guarantees
+
+```mermaid
+flowchart TD
+  UI[Vue 3 Frontend GUI] -->|Typed IPC| IPC[Tauri Commands]
+  IPC -->|Sequential Write Lock NetworkLock| S[Transaction Orchestration & Validation domain.rs]
+  S -->|stdin JSON Injection-Free Pipe| P[PowerShell Snapshot Query: IPv4 + IPv6 + DoH]
+  S -->|Trusted System32 Executables| N[netsh.exe IPv4 & Gateway Application]
+  S -->|Trusted System32 Executables| D[PowerShell DoH & IPv6 Binding Application]
+  D -->|Verification Mismatch or Error| R[Automatic Transactional Rollback to Initial Snapshot]
+  D -->|Verification Match Confirmed| V[Return Success to Frontend]
+```
 
 ### 2.1 Technology Stack
-- **Frontend**: Vue 3 + Vite for a modern, reactive UI.
-- **Backend/Desktop**: Tauri (Rust) for secure, efficient system-level operations, packaged as a native Windows app.
+- **Frontend**: Vue 3 Composition API (`<script setup lang="ts">`) + TypeScript + Vite, featuring responsive layout, accessible controls, and Windows 11 Fluent-style toggles.
+- **Backend / Desktop Container**: Tauri 1 (Rust), enforcing separation of executable code and data parameters, compiled as a native lightweight Windows executable.
 
-### 2.2 Design Principles
-- **Security**: Minimal permission principle in Tauri (`tauri.conf.json` only allows necessary APIs).
-- **Usability**: Clean and intuitive UI.
-- **History**: Stores up to 10 recent configurations locally for quick switching.
-- **Cross-platform**: Designed for Windows but extensible to other platforms.
+### 2.2 Core Safety & Reliability Features
+- **Anti-Code-Injection (A-01)**: All system command executions utilize static, invariant scripts. Arguments are serialized as JSON and passed via standard input (`stdin`), completely eliminating PowerShell script concatenation vulnerabilities.
+- **Trusted System32 Paths (A-12)**: Executables are strictly resolved using absolute system directories (`SystemRoot\System32\powershell.exe`, `netsh.exe`), eliminating PATH hijacking risks.
+- **Transactional Rollback & Read-Back Verification (A-03)**: Captures a complete snapshot before any modification. After changes are applied, it continuously polls and reads back the system state. If any step fails or read-back verification fails, it restores the previous state atomically.
+- **Global Mutex & Async Task Management (A-04)**: Protects all write operations using an in-process `NetworkLock` and a Windows named mutex to prevent concurrent write collisions.
+- **Strict Semantic Network Validation (A-06)**: Validates standard IPv4 octets (no leading zeros), contiguous subnet masks, gateway in-subnet validity, and HTTPS protocol compliance for DoH templates.
+- **Adapter Draft Isolation (A-08)**: Keeps distinct form drafts per adapter name to eliminate accidental cross-adapter overwrites.
+- **Fault-Tolerant History Storage (A-09, A-10)**: Strict JSON schema validation (`schemaVersion: 1`). Corrupt records are isolated, and storage errors never falsely flag network configuration failures.
 
-## 3. Main Features
+---
 
-### 3.1 Adapter Info Retrieval
-- Backend (Rust) fetches all network adapters via system APIs.
-- Frontend calls backend using `@tauri-apps/api/tauri`'s `invoke` method.
-
-### 3.2 IPv4 Configuration
-- User selects adapter, fills IP/mask/gateway/DNS, clicks "Apply".
-- Frontend validates, backend applies config via system commands.
-
-### 3.3 History Management
-- Each successful config is saved to localStorage (max 10 entries).
-- One-click apply from history.
-
-### 3.4 Status & Error Handling
-- All actions have status feedback, errors highlighted.
-- Errors are handled gracefully.
-
-## 4. Project Structure
+## 3. Project Structure
 
 ```
-├── src/              # Frontend Vue3 source
-│   ├── App.vue       # Main UI & logic
-│   └── main.ts       # Entry
-├── src-tauri/        # Tauri backend (Rust)
-│   └── tauri.conf.json # Tauri config
-├── public/           # Static assets
-├── dist/             # Frontend build output
-├── package.json      # Frontend deps/scripts
-├── vite.config.ts    # Vite config
-├── README.md         # Brief intro
-├── releases/         # Installers
+├── src/
+│   ├── types/
+│   │   └── network.ts            # DTO interface definitions (DohConfig, AdapterSnapshot)
+│   ├── utils/
+│   │   └── validation.ts         # IPv4, contiguous subnet mask, and gateway validation
+│   ├── services/
+│   │   └── networkClient.ts      # Typed Tauri IPC wrapper
+│   ├── composables/
+│   │   ├── useNetworkConfig.ts   # Adapter state, DoH/IPv6 draft isolation & apply logic
+│   │   └── useConfigHistory.ts   # Local history validation, persistence & error isolation
+│   ├── App.vue                   # UI layout, Fluent switches, and preset chips
+│   └── main.ts                   # Vue application entry point
+├── src-tauri/
+│   ├── src/
+│   │   ├── domain.rs             # Domain models, DoH/IPv4 algorithms & unit tests
+│   │   ├── platform.rs           # Trusted paths, DoH/IPv6 management & rollback
+│   │   ├── lib.rs                # Tauri command registration & write locks
+│   │   └── main.rs               # Rust backend entry point
+│   └── tauri.conf.json           # Tauri configuration with CSP security
+├── docs/                         # Security audit and refactoring reports
+├── releases/                     # Output directory for standalone portable executables
+├── package.json                  # Dependencies and build scripts
+├── vite.config.ts                # Vite configuration
+├── build-app.bat                 # One-click Windows build batch script
+├── 打包说明.md                   # Packaging guide (portable & installer)
+└── README.md                     # Project summary
 ```
 
-## 5. Development & Run
+---
 
-### 5.1 Install dependencies
+## 4. API Interface Contracts
+
+### 4.1 Get Network Adapters
+- **Command**: `get_network_adapters`
+- **Input**: None
+- **Output**: `Vec<AdapterInfo>`
+```typescript
+interface AdapterInfo {
+  name: string;             // Adapter name (e.g. "Ethernet", "Wi-Fi")
+  status: string;           // Formatted user-friendly status
+  rawStatus?: string;       // Raw system status (Up, Disconnected, etc.)
+  displayName?: string;     // Hardware device description
+  interfaceIndex?: number;  // Interface index
+  interfaceGuid?: string;   // Unique interface GUID
+}
+```
+
+### 4.2 Get Current Adapter Snapshot
+- **Command**: `get_current_config`
+- **Input**: `{ adapterName: string }`
+- **Output**: `AdapterSnapshot`
+```typescript
+interface DohConfig {
+  mode: 'off' | 'auto' | 'manual'; // DoH mode
+  template: string;                // HTTPS query template URL
+  allowFallback: boolean;          // Allow fallback to unencrypted UDP
+}
+
+interface AdapterSnapshot {
+  adapterName: string;
+  interfaceIndex: number;
+  interfaceGuid: string;
+  status: string;
+  dhcpEnabled: boolean;
+  addresses: { ipAddress: string; prefixLength: number; mask: string }[];
+  gateways: string[];
+  dnsServers: string[];
+  ip: string;
+  mask: string;
+  gateway: string;
+  dns1: string;
+  dns2: string;
+  doh1?: DohConfig;       // Primary DNS DoH configuration
+  doh2?: DohConfig;       // Secondary DNS DoH configuration
+  ipv6Enabled?: boolean;  // IPv6 binding status (ms_tcpip6)
+}
+```
+
+### 4.3 Apply Network Configuration Transactionally
+- **Command**: `apply_adapter_ipv4_config`
+- **Input**: `{ cfg: Ipv4Config }`
+```typescript
+interface Ipv4Config {
+  adapter: string;
+  ip: string;
+  mask: string;
+  gateway: string;        // Optional default gateway
+  dns1: string;           // Optional primary DNS
+  dns2: string;           // Optional secondary DNS
+  doh1?: DohConfig;       // Optional primary DoH
+  doh2?: DohConfig;       // Optional secondary DoH
+  ipv6Enabled?: boolean;  // Optional IPv6 protocol binding switch
+}
+```
+- **Output**: `OperationResult`
+```typescript
+interface OperationResult {
+  success: boolean;            // Whether application & verification succeeded
+  message: string;            // Detailed status message
+  rolledBack: boolean;        // Whether automatic rollback was triggered
+  rollbackMessage?: string;   // Description of rollback status
+  snapshot?: AdapterSnapshot; // Verified snapshot after change
+}
+```
+
+---
+
+## 5. Development & Build
+
+### 5.1 Install Dependencies
 ```bash
-yarn install
+npm install
+# Or with yarn:
+# yarn install
 ```
 
-### 5.2 Local development
+### 5.2 Local Development (Frontend + Tauri Desktop Window)
 ```bash
-yarn tauri dev
+npm run tauri dev
 ```
 
-### 5.3 Frontend only (UI debug)
+### 5.3 Frontend Only (Web Debugging)
 ```bash
-yarn dev
+npm run dev
 ```
 
-## 6. Build & Release
-
-See detailed steps in `打包说明.md` (Packaging Guide, Chinese). Core steps:
-
-### 6.1 Build frontend
+### 5.4 Type Checking & Frontend Build
 ```bash
-yarn build
+npm run typecheck
+npm run build
 ```
 
-### 6.2 Build backend
+### 5.5 Backend Tests
 ```bash
 cd src-tauri
-cargo build --release
-cd ..
-# Or use Tauri CLI for portable/MSI:
-yarn tauri build --target app
-# or
-yarn tauri build --target msi
+cargo test
+cargo check
 ```
 
-### 6.3 Notes
-- 32-bit: `rustup target add i686-pc-windows-msvc`
-- MSI: Install [WiX Toolset](https://wixtoolset.org/releases/)
-- See `打包说明.md` for more
-
-## 7. FAQ & Suggestions
-- **Permission denied**: Run as administrator.
-- **Missing dependencies**: Ensure Node.js, Yarn, Rust, Tauri CLI are installed.
-- **No adapters listed**: Check Windows network services.
-
-## 8. References
-- [Tauri Docs](https://tauri.app/zh-cn/docs/)
-- [Vue Docs](https://cn.vuejs.org/)
-
----
-
-## 9. API Interaction & Core Code
-
-### 9.1 Frontend-Backend Communication (Tauri invoke)
-
-```typescript
-import { invoke } from '@tauri-apps/api/tauri';
-const adapters = await invoke<AdapterInfo[]>("get_network_adapters");
-const msg = await invoke<string>("apply_adapter_ipv4_config", { cfg: ipConfig });
-const current = await invoke<IpConfig>("get_current_config", { adapter_name: selectedAdapter });
+### 5.6 Build Release Portable Executable
+Run the batch file in the root folder:
+```cmd
+build-app.bat
 ```
-
-#### invoke signature
-```typescript
-function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+Or execute:
+```bash
+npm run build
+cd src-tauri && cargo build --release
 ```
-
-### 9.2 Rust Backend Commands
-
-- `get_network_adapters`: Returns all network adapters
-- `get_current_config(adapter_name: String)`: Returns IPv4 config
-- `apply_adapter_ipv4_config(cfg: Ipv4Config)`: Applies IPv4 config
-
-#### Data Structures
-```rust
-pub struct AdapterInfo {
-    pub name: String,    // Adapter name
-    pub status: String,  // Display name/status
-}
-
-pub struct Ipv4Config {
-    pub adapter: String,
-    pub ip: String,
-    pub mask: String,
-    pub gateway: String,
-    pub dns1: String,
-    pub dns2: String,
-}
-```
-
----
-
-## 10. How to Upload Installer to GitHub Releases Using GitHub CLI
-
-1. **Login to GitHub CLI**
-   ```bash
-   gh auth login
-   ```
-   Follow the prompts to authenticate with your GitHub account.
-
-2. **Create a Release and Upload the Installer**
-   ```bash
-   gh release create v1.0.0 "releases/Network_adapter_IP4_information_modification (Run_with_administrator_privileges).exe" --title "v1.0.0" --notes "First release version"
-   ```
-   - `v1.0.0` is the tag name (customizable)
-   - `--title` is the release title
-   - `--notes` is the release description
-
-   Or upload to an existing release:
-   ```bash
-   gh release upload v1.0.0 "releases/Network_adapter_IP4_information_modification (Run_with_administrator_privileges).exe"
-   ```
-
-3. **Check the Result**
-   After publishing, visit your repository’s Releases page to download the installer.
-
-> Note: If the installer filename contains spaces, wrap the path in double quotes.
-
----
-
-For more details on backend implementation, see `src-tauri/src/lib.rs` with full code comments.
+The output binary will be located at:
+`src-tauri/target/release/tauri-vue-20250419.exe`.

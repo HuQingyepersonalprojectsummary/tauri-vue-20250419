@@ -1,0 +1,8 @@
+{
+  "parseErrors": 0,
+  "commands": [
+    "Get-NetAdapter",
+    "Write-Output"
+  ],
+  "executed": false
+}

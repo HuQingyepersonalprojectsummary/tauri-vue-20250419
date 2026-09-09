@@ -1,0 +1,75 @@
+{
+  "date": "2026-09-09",
+  "baseCommit": "2c6fdafbfb46aca96e68aa8eaffc5ea728f3d4de",
+  "reviewTarget": "uncommitted working tree including new files",
+  "files": [
+    {
+      "file": "src/App.vue",
+      "sha256": "DFFF8AD07A89D635981E160495F0D3DF552300E03B9928724FBA68E152001406"
+    },
+    {
+      "file": "src/composables/useNetworkConfig.ts",
+      "sha256": "9143E14A8C1A97B2CAC3C86A18D3641BBFC196DD4A69D863D5978C5E041A36C7"
+    },
+    {
+      "file": "src/composables/useConfigHistory.ts",
+      "sha256": "DE10687BB7724FDE113A7ADBFADB7E77DF3849683EBC9A1F161A9367736B226C"
+    },
+    {
+      "file": "src/utils/validation.ts",
+      "sha256": "C24C671CB4DB2DFB2A8FEC78D82D7146ECD55D21E1527EB67FC0F4902293DB3F"
+    },
+    {
+      "file": "src/services/networkClient.ts",
+      "sha256": "6FA7FCA7D1319896E52310B35212230FE85EEB851D3AFE6E50E0D5FA63DF53AD"
+    },
+    {
+      "file": "src/types/network.ts",
+      "sha256": "B8BCF7C249E45615BC75F822C90F43DB8EFCB4DFCE6475560EA6F1A88B5F8892"
+    },
+    {
+      "file": "src-tauri/src/lib.rs",
+      "sha256": "4AC1E3ABAEAF7A93411DA4A5784EA23C09E347A0870318314B2959D659A5F2F2"
+    },
+    {
+      "file": "src-tauri/src/domain.rs",
+      "sha256": "8C0CDE405639A1C4F8D15F8068D710397C3A63247016CCE8C564761AF58EC78F"
+    },
+    {
+      "file": "src-tauri/src/platform.rs",
+      "sha256": "9C77CBB1A4507DDEA0A75E1DB869066C595380EA23A8C98DD3EA09F2BD3AE00E"
+    },
+    {
+      "file": "src-tauri/tauri.conf.json",
+      "sha256": "26AC3870389B2571824645CE780C62A4246B90DE6CA6AAB1611AE16907D93269"
+    },
+    {
+      "file": "src-tauri/Cargo.toml",
+      "sha256": "CC44DB1477A68A14053263D5AFF14681472F7C3E82DB6591058F0D63C4439BF5"
+    },
+    {
+      "file": "src-tauri/Cargo.lock",
+      "sha256": "E26AD52C12EA4E09F9A366A40A98C7672663E1D1B1AE3FD249E174FE91C23A04"
+    },
+    {
+      "file": "package.json",
+      "sha256": "49F434BD207BC58594C2A3810EAD0760FF1B6597C64292CEA1AE61933B65A98B"
+    },
+    {
+      "file": "yarn.lock",
+      "sha256": "01D1DF2CB2AAAD3E66CBBEEFB1B6D31F2D871356E9C6F62F42FFA0CCC11756B4"
+    },
+    {
+      "file": "README.md",
+      "sha256": "E2FCE4F41FF8B16E696CCEBDFC32CEBED3931532F1EED49E5C5383BD4C369E28"
+    },
+    {
+      "file": "stats.html",
+      "sha256": "A3B978D3D7124F4517ACCB30BD62D5E1D5CC37E4CE7E55238BB50801B0F9E30E"
+    },
+    {
+      "file": "releases/Windows_IPv4_Config_Tool_v0.1.0.exe",
+      "sha256": "6BA6DD09B64D3D5A3FBC36DFA83894A53419F78F15DB0B86423CEA6E3C99C042"
+    }
+  ]
+}

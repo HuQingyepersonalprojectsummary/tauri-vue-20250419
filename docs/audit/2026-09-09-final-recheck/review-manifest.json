@@ -1,0 +1,92 @@
+{
+  "date": "2026-09-09",
+  "baseCommit": "2c6fdafbfb46aca96e68aa8eaffc5ea728f3d4de",
+  "reviewTarget": "third review of uncommitted working tree",
+  "files": [
+    {
+      "file": "src/App.vue",
+      "sha256": "DFFF8AD07A89D635981E160495F0D3DF552300E03B9928724FBA68E152001406",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src/composables/useNetworkConfig.ts",
+      "sha256": "B3BFCFC7DF52E61CC9889346404B28A5EB0E71B49EDC80DBF372CF32B74A6146",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "src/composables/useConfigHistory.ts",
+      "sha256": "2BDFCD6117687E46CDF2A2B0C086AED455B3B012666B7FD12198172AD53F8D76",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "src/utils/validation.ts",
+      "sha256": "C24C671CB4DB2DFB2A8FEC78D82D7146ECD55D21E1527EB67FC0F4902293DB3F",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src/services/networkClient.ts",
+      "sha256": "6FA7FCA7D1319896E52310B35212230FE85EEB851D3AFE6E50E0D5FA63DF53AD",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src/types/network.ts",
+      "sha256": "B8BCF7C249E45615BC75F822C90F43DB8EFCB4DFCE6475560EA6F1A88B5F8892",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src-tauri/src/lib.rs",
+      "sha256": "B8E949C8DD5B0E282CBAFD1DCD84B5BA299EBAD3B695D7C4342B5E8D0BC378E8",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "src-tauri/src/domain.rs",
+      "sha256": "529CC2DC8B1BDB1585208A3A4E40008F0145228FD9AD7700B80A80DAC34741AC",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "src-tauri/src/platform.rs",
+      "sha256": "6E43B125C858A96D4EC7D6BB6C54F1C656C776463C7337541A6439287D6A1B25",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "src-tauri/tauri.conf.json",
+      "sha256": "26AC3870389B2571824645CE780C62A4246B90DE6CA6AAB1611AE16907D93269",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src-tauri/Cargo.toml",
+      "sha256": "CC44DB1477A68A14053263D5AFF14681472F7C3E82DB6591058F0D63C4439BF5",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "src-tauri/Cargo.lock",
+      "sha256": "E26AD52C12EA4E09F9A366A40A98C7672663E1D1B1AE3FD249E174FE91C23A04",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "package.json",
+      "sha256": "49F434BD207BC58594C2A3810EAD0760FF1B6597C64292CEA1AE61933B65A98B",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "yarn.lock",
+      "sha256": "01D1DF2CB2AAAD3E66CBBEEFB1B6D31F2D871356E9C6F62F42FFA0CCC11756B4",
+      "unchangedSincePreviousReview": true
+    },
+    {
+      "file": "README.md",
+      "sha256": "9B7D4DB38766E2BD893C829A359D080D34F9690E60A68455312879F7C9A28AF6",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "stats.html",
+      "sha256": "9EEBB9A72F6140B38DD5D78DA463B9CFCE02A8CF836DB5A7A09EF64FC913DA6E",
+      "unchangedSincePreviousReview": false
+    },
+    {
+      "file": "releases/Windows_IPv4_Config_Tool_v0.1.0.exe",
+      "sha256": "6BA6DD09B64D3D5A3FBC36DFA83894A53419F78F15DB0B86423CEA6E3C99C042",
+      "unchangedSincePreviousReview": true
+    }
+  ]
+}

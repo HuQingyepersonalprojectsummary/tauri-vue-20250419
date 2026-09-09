@@ -1,0 +1,326 @@
+{
+  "date": "2026-09-09",
+  "exitCode": 14,
+  "summary": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 3,
+      "moderate": 11,
+      "high": 25,
+      "critical": 0
+    },
+    "dependencies": 166,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 166
+  },
+  "uniqueAdvisories": 27,
+  "advisories": [
+    {
+      "id": "GHSA-23c5-xmqv-rm74",
+      "package": "minimatch",
+      "severity": "high",
+      "affected": ">=10.0.0 <10.2.3",
+      "fixed": ">=10.2.3",
+      "url": "https://github.com/advisories/GHSA-23c5-xmqv-rm74",
+      "paths": [
+        "rimraf>glob>minimatch"
+      ]
+    },
+    {
+      "id": "GHSA-28wg-ghj8-5hjv",
+      "package": "nanoid",
+      "severity": "high",
+      "affected": "<3.3.16",
+      "fixed": ">=3.3.16",
+      "url": "https://github.com/advisories/GHSA-28wg-ghj8-5hjv",
+      "paths": [
+        "vite>postcss>nanoid",
+        "vue>@vue/compiler-sfc>postcss>nanoid"
+      ]
+    },
+    {
+      "id": "GHSA-2v37-7h3g-55p8",
+      "package": "nanoid",
+      "severity": "high",
+      "affected": "<3.3.18",
+      "fixed": ">=3.3.18",
+      "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8",
+      "paths": [
+        "vite>postcss>nanoid",
+        "vue>@vue/compiler-sfc>postcss>nanoid"
+      ]
+    },
+    {
+      "id": "GHSA-3jxr-9vmj-r5cp",
+      "package": "brace-expansion",
+      "severity": "high",
+      "affected": ">=2.0.0 <2.1.2",
+      "fixed": ">=2.1.2",
+      "url": "https://github.com/advisories/GHSA-3jxr-9vmj-r5cp",
+      "paths": [
+        "rimraf>glob>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "id": "GHSA-3ppc-4f35-3m26",
+      "package": "minimatch",
+      "severity": "high",
+      "affected": ">=10.0.0 <10.2.1",
+      "fixed": ">=10.2.1",
+      "url": "https://github.com/advisories/GHSA-3ppc-4f35-3m26",
+      "paths": [
+        "rimraf>glob>minimatch"
+      ]
+    },
+    {
+      "id": "GHSA-3v7f-55p6-f55p",
+      "package": "picomatch",
+      "severity": "moderate",
+      "affected": ">=4.0.0 <4.0.4",
+      "fixed": ">=4.0.4",
+      "url": "https://github.com/advisories/GHSA-3v7f-55p6-f55p",
+      "paths": [
+        "rollup-plugin-visualizer>picomatch",
+        "vite>tinyglobby>picomatch"
+      ]
+    },
+    {
+      "id": "GHSA-4w7w-66w2-5vf9",
+      "package": "vite",
+      "severity": "moderate",
+      "affected": "<=6.4.1",
+      "fixed": ">=6.4.2",
+      "url": "https://github.com/advisories/GHSA-4w7w-66w2-5vf9",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-5j98-mcp5-4vw2",
+      "package": "glob",
+      "severity": "high",
+      "affected": ">=11.0.0 <11.1.0",
+      "fixed": ">=11.1.0",
+      "url": "https://github.com/advisories/GHSA-5j98-mcp5-4vw2",
+      "paths": [
+        "rimraf>glob"
+      ]
+    },
+    {
+      "id": "GHSA-6g55-p6wh-862q",
+      "package": "postcss",
+      "severity": "high",
+      "affected": "<=8.5.11",
+      "fixed": ">=8.5.12",
+      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+      "paths": [
+        "vite>postcss",
+        "vue>@vue/compiler-sfc>postcss"
+      ]
+    },
+    {
+      "id": "GHSA-7r86-cg39-jmmj",
+      "package": "minimatch",
+      "severity": "high",
+      "affected": ">=10.0.0 <10.2.3",
+      "fixed": ">=10.2.3",
+      "url": "https://github.com/advisories/GHSA-7r86-cg39-jmmj",
+      "paths": [
+        "rimraf>glob>minimatch"
+      ]
+    },
+    {
+      "id": "GHSA-859w-5945-r5v3",
+      "package": "vite",
+      "severity": "moderate",
+      "affected": ">=6.3.0 <=6.3.3",
+      "fixed": ">=6.3.4",
+      "url": "https://github.com/advisories/GHSA-859w-5945-r5v3",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-93m4-6634-74q7",
+      "package": "vite",
+      "severity": "moderate",
+      "affected": ">=6.0.0 <=6.4.0",
+      "fixed": ">=6.4.1",
+      "url": "https://github.com/advisories/GHSA-93m4-6634-74q7",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-c2c7-rcm5-vvqj",
+      "package": "picomatch",
+      "severity": "high",
+      "affected": ">=4.0.0 <4.0.4",
+      "fixed": ">=4.0.4",
+      "url": "https://github.com/advisories/GHSA-c2c7-rcm5-vvqj",
+      "paths": [
+        "rollup-plugin-visualizer>picomatch",
+        "vite>tinyglobby>picomatch"
+      ]
+    },
+    {
+      "id": "GHSA-f886-m6hf-6m8v",
+      "package": "brace-expansion",
+      "severity": "moderate",
+      "affected": ">=2.0.0 <2.0.3",
+      "fixed": ">=2.0.3",
+      "url": "https://github.com/advisories/GHSA-f886-m6hf-6m8v",
+      "paths": [
+        "rimraf>glob>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "id": "GHSA-fx2h-pf6j-xcff",
+      "package": "vite",
+      "severity": "high",
+      "affected": "<=6.4.2",
+      "fixed": ">=6.4.3",
+      "url": "https://github.com/advisories/GHSA-fx2h-pf6j-xcff",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-fxqj-rqcc-2cmp",
+      "package": "postcss",
+      "severity": "moderate",
+      "affected": "<=8.5.22",
+      "fixed": ">=8.5.23",
+      "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
+      "paths": [
+        "vite>postcss",
+        "vue>@vue/compiler-sfc>postcss"
+      ]
+    },
+    {
+      "id": "GHSA-g4jq-h2w9-997c",
+      "package": "vite",
+      "severity": "low",
+      "affected": ">=6.0.0 <=6.3.5",
+      "fixed": ">=6.3.6",
+      "url": "https://github.com/advisories/GHSA-g4jq-h2w9-997c",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-jqfw-vq24-v9c3",
+      "package": "vite",
+      "severity": "low",
+      "affected": ">=6.0.0 <=6.3.5",
+      "fixed": ">=6.3.6",
+      "url": "https://github.com/advisories/GHSA-jqfw-vq24-v9c3",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-mh99-v99m-4gvg",
+      "package": "brace-expansion",
+      "severity": "high",
+      "affected": ">=2.0.0 <2.1.3",
+      "fixed": ">=2.1.3",
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+      "paths": [
+        "rimraf>glob>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "id": "GHSA-mw96-cpmx-2vgc",
+      "package": "rollup",
+      "severity": "high",
+      "affected": ">=4.0.0 <4.59.0",
+      "fixed": ">=4.59.0",
+      "url": "https://github.com/advisories/GHSA-mw96-cpmx-2vgc",
+      "paths": [
+        "vite>rollup"
+      ]
+    },
+    {
+      "id": "GHSA-p9ff-h696-f583",
+      "package": "vite",
+      "severity": "high",
+      "affected": ">=6.0.0 <=6.4.1",
+      "fixed": ">=6.4.2",
+      "url": "https://github.com/advisories/GHSA-p9ff-h696-f583",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-qx2v-qp2m-jg93",
+      "package": "postcss",
+      "severity": "moderate",
+      "affected": "<8.5.10",
+      "fixed": ">=8.5.10",
+      "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+      "paths": [
+        "vite>postcss",
+        "vue>@vue/compiler-sfc>postcss"
+      ]
+    },
+    {
+      "id": "GHSA-r28c-9q8g-f849",
+      "package": "postcss",
+      "severity": "high",
+      "affected": "<=8.5.17",
+      "fixed": ">=8.5.18",
+      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+      "paths": [
+        "vite>postcss",
+        "vue>@vue/compiler-sfc>postcss"
+      ]
+    },
+    {
+      "id": "GHSA-rgw5-rvv9-x895",
+      "package": "brace-expansion",
+      "severity": "high",
+      "affected": ">=2.0.0 <2.1.4",
+      "fixed": ">=2.1.4",
+      "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+      "paths": [
+        "rimraf>glob>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "id": "GHSA-v6h2-p8h4-qcjw",
+      "package": "brace-expansion",
+      "severity": "low",
+      "affected": ">=2.0.0 <=2.0.1",
+      "fixed": ">=2.0.2",
+      "url": "https://github.com/advisories/GHSA-v6h2-p8h4-qcjw",
+      "paths": [
+        "rimraf>glob>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "id": "GHSA-v6wh-96g9-6wx3",
+      "package": "vite",
+      "severity": "moderate",
+      "affected": "<=6.4.2",
+      "fixed": ">=6.4.3",
+      "url": "https://github.com/advisories/GHSA-v6wh-96g9-6wx3",
+      "paths": [
+        "vite"
+      ]
+    },
+    {
+      "id": "GHSA-xwg4-73v4-xw9w",
+      "package": "nanoid",
+      "severity": "high",
+      "affected": "<3.3.12",
+      "fixed": ">=3.3.12",
+      "url": "https://github.com/advisories/GHSA-xwg4-73v4-xw9w",
+      "paths": [
+        "vite>postcss>nanoid",
+        "vue>@vue/compiler-sfc>postcss>nanoid"
+      ]
+    }
+  ]
+}
