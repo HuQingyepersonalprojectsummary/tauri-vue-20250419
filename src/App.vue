@@ -198,8 +198,12 @@ onMounted(() => {
             </span>
           </div>
           <div v-if="currentSnapshot.dnsServers && currentSnapshot.dnsServers.length > 0" class="snapshot-item">
-            <span class="label">当前 DNS:</span>
+            <span class="label">当前 IPv4 DNS:</span>
             <span class="value">{{ currentSnapshot.dnsServers.join(', ') }}</span>
+          </div>
+          <div v-if="currentSnapshot.ipv6DnsServers && currentSnapshot.ipv6DnsServers.length > 0" class="snapshot-item">
+            <span class="label">当前 IPv6 DNS:</span>
+            <span class="value">{{ currentSnapshot.ipv6DnsServers.join(', ') }}</span>
           </div>
           <div v-if="currentSnapshot.doh1 && currentSnapshot.doh1.mode !== 'off'" class="snapshot-item">
             <span class="label">首选 DoH:</span>
@@ -565,14 +569,20 @@ onMounted(() => {
               </div>
 
               <div v-if="ipConfig.ipv6DnsMode === 'dhcp'" class="dhcp-info-banner">
-                <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 DNS</strong>。</span>
+                <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 DNS (DHCPv6)</strong>。如需自定义<strong>首选与备用 IPv6 DNS</strong>，请将上方分配模式切换为“手动配置”。</span>
+                <span v-if="currentSnapshot?.ipv6DnsServers && currentSnapshot.ipv6DnsServers.length > 0" class="dhcp-lease-info">
+                  当前自动获取到: 首选 IPv6 DNS: {{ currentSnapshot.ipv6DnsServers[0] }}<template v-if="currentSnapshot.ipv6DnsServers[1]">，备用 IPv6 DNS: {{ currentSnapshot.ipv6DnsServers[1] }}</template><template v-else> (局域网路由器/上游仅下发了 1 个 IPv6 DNS)</template>
+                </span>
+                <span v-else-if="ipConfig.ipv6Dns1" class="dhcp-lease-info">
+                  当前获取到: 首选 IPv6 DNS: {{ ipConfig.ipv6Dns1 }}<template v-if="ipConfig.ipv6Dns2">，备用 IPv6 DNS: {{ ipConfig.ipv6Dns2 }}</template>
+                </span>
               </div>
               <template v-else>
                 <!-- 常用公共 IPv6 DNS 预设 -->
                 <div class="preset-section">
                   <div class="preset-label-bar">
                     <span class="preset-title">⚡ 常用公共 IPv6 DNS 预设:</span>
-                    <span class="preset-hint">点击快速填入权威 IPv6 DNS</span>
+                    <span class="preset-hint">点击快速填入权威首选与备用 IPv6 DNS</span>
                   </div>
                   <div class="preset-chips">
                     <button
@@ -591,7 +601,7 @@ onMounted(() => {
                 <!-- IPv6 DNS 输入字段 -->
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="input-ipv6-dns1">首选 IPv6 DNS <span class="optional">(可选)</span></label>
+                    <label for="input-ipv6-dns1">首选 IPv6 DNS 服务器 <span class="optional">(推荐填入)</span></label>
                     <input
                       id="input-ipv6-dns1"
                       v-model="ipConfig.ipv6Dns1"
@@ -602,7 +612,7 @@ onMounted(() => {
                   </div>
 
                   <div class="form-group">
-                    <label for="input-ipv6-dns2">备用 IPv6 DNS <span class="optional">(可选)</span></label>
+                    <label for="input-ipv6-dns2">备用 IPv6 DNS 服务器 <span class="optional">(可选备用)</span></label>
                     <input
                       id="input-ipv6-dns2"
                       v-model="ipConfig.ipv6Dns2"
