@@ -547,11 +547,11 @@ if ($hasDohCmdlet) {
 }
 
 # 查询当前网卡在 Windows 11 注册表中的单网卡 DoH 加密配置 (InterfaceSpecificParameters)
+$hasInterfaceDoh = Test-Path "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters"
 $adapterGuid = if ($adapter.InterfaceGuid) { $adapter.InterfaceGuid.ToString().ToLower() } else { '' }
 $interfaceDohRoot = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings"
-$hasInterfaceDoh = Test-Path $interfaceDohRoot
 $adapterDohSettings = @{}
-if ($hasInterfaceDoh) {
+if ($hasInterfaceDoh -and (Test-Path $interfaceDohRoot)) {
     # 检查 IPv4 DoH
     $ipv4DohPath = "$interfaceDohRoot\Doh"
     if (Test-Path $ipv4DohPath) {
@@ -2295,6 +2295,7 @@ pub fn apply_adapter_ipv4_config_transactional(
 
     // 5. 应用 DoH 与 IPv6 设置
     let mut doh_items = Vec::new();
+    let mut configured_doh_ips = Vec::new();
     if dns_mode == "static" {
         if let Some(ref d1) = dns1_opt {
             if let Some(ref doh1) = cfg.doh1 {
@@ -2305,6 +2306,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                     "allowFallback": doh1.allow_fallback,
                     "action": "set",
                 }));
+                configured_doh_ips.push(d1.as_str());
             }
         }
         if let Some(ref d2) = dns2_opt {
@@ -2316,7 +2318,33 @@ pub fn apply_adapter_ipv4_config_transactional(
                     "allowFallback": doh2.allow_fallback,
                     "action": "set",
                 }));
+                configured_doh_ips.push(d2.as_str());
             }
+        }
+    }
+
+    // 清理当前网卡上曾经生效、但在本次配置中已被移除或已切换至 DHCP 的旧 DNS 服务器的单网卡 DoH 注册表
+    for old_dns in &before_snapshot.dns_servers {
+        if !configured_doh_ips.contains(&old_dns.as_str()) {
+            doh_items.push(serde_json::json!({
+                "serverIp": old_dns,
+                "mode": "off",
+                "template": "",
+                "allowFallback": true,
+                "action": "set",
+            }));
+        }
+    }
+
+    if ipv6_dns_mode == "dhcp" {
+        for old_v6_dns in &before_snapshot.ipv6_dns_servers {
+            doh_items.push(serde_json::json!({
+                "serverIp": old_v6_dns,
+                "mode": "off",
+                "template": "",
+                "allowFallback": true,
+                "action": "set",
+            }));
         }
     }
 
