@@ -1,28 +1,28 @@
 {
   "version": "0.1.0",
   "architecture": "x64",
-  "generatedAt": "2026-09-10T22:29:40.9646124+08:00",
+  "generatedAt": "2026-09-10T22:42:00.0885743+08:00",
   "signed": false,
   "artifacts": [
     {
       "file": "Windows网络配置工具.exe",
-      "bytes": 2085376,
-      "sha256": "9050a0cb00e13118ee33875a038af6adbba1fe2c986ad9dcac5c31389678e8bf"
+      "bytes": 2085888,
+      "sha256": "2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d"
     },
     {
       "file": "Windows_Network_Config_Tool_v0.1.0.exe",
-      "bytes": 2085376,
-      "sha256": "9050a0cb00e13118ee33875a038af6adbba1fe2c986ad9dcac5c31389678e8bf"
+      "bytes": 2085888,
+      "sha256": "2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64_zh-CN.msi",
       "bytes": 1462272,
-      "sha256": "8b257938b1ad9a9aa344610e616c4971b88749786c85b91aaf3129d573de15fd"
+      "sha256": "4b871913ee7c94207b4b3fd94c2ee6d0cd687ca045fa8f73fc1e58787249ca38"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64-setup.exe",
-      "bytes": 951022,
-      "sha256": "5bc9543839bf6a8f01b048e516fa3e16c62eda0e786e597e5bbc57c109a0f7d6"
+      "bytes": 951227,
+      "sha256": "faef37a4368560a10aa14a0c3e0167f24f39467c5eabc06a0ac819bef323e88f"
     }
   ],
   "sourceFiles": [
@@ -132,7 +132,7 @@
     },
     {
       "path": "src-tauri/src/platform.rs",
-      "sha256": "e0b0764119df9cec226623cbb2331641d7b4f99e0d75211dbdc07d3d0902be48"
+      "sha256": "92fcb004e65ce9a4e88746b52e5b2b2cc5c2756471a8394f41f16135a8a2d77b"
     },
     {
       "path": "src-tauri/tauri.conf.json",

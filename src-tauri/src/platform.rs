@@ -694,7 +694,7 @@ foreach ($item in $dohList) {
             try {
                 $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
             } catch {
-                if ($_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress objects found' -or $_.FullyQualifiedErrorId -match 'NoMatching') {
+                if ($_.CategoryInfo.Category -eq 'ObjectNotFound' -or $_.FullyQualifiedErrorId -match 'NotFound|NoMatching|CmdletizationQuery_NotFound' -or $_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress|找不到任何') {
                     $existing = $null
                 } else {
                     throw "查询待删除 DoH 服务器 ($serverIp) 失败: $_"
@@ -710,7 +710,7 @@ foreach ($item in $dohList) {
         try {
             $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
         } catch {
-            if ($_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress objects found' -or $_.FullyQualifiedErrorId -match 'NoMatching') {
+            if ($_.CategoryInfo.Category -eq 'ObjectNotFound' -or $_.FullyQualifiedErrorId -match 'NotFound|NoMatching|CmdletizationQuery_NotFound' -or $_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress|找不到任何') {
                 $existing = $null
             } else {
                 throw "查询 DoH 服务器 ($serverIp) 失败: $_"
