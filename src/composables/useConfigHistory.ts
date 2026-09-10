@@ -1,16 +1,34 @@
 import { ref } from 'vue';
 import type { HistoryItem, Ipv4Config } from '../types/network';
 
+/** LocalStorage 存储主键 (版本 1) */
 const CONFIG_KEY = 'net_config_history_v1';
+/** 旧版本数据存储主键 (用于无缝平滑迁移) */
 const LEGACY_KEY = 'net_config_history';
+/** 最大历史保存条数限制，防止无限膨胀 */
 const MAX_HISTORY_ITEMS = 10;
 
+/**
+ * 网络配置历史记录组合式函数
+ * 
+ * 职责：
+ * 1. 管理用户已保存或应用成功的历史网络配置记录（上限 10 条）；
+ * 2. 具备结构化数据校验（Schema Version 1），单条损坏自动隔离清理，不影响其余条目；
+ * 3. 存储异常时产生独立警告（storageWarning），绝不阻断网络配置应用主流程。
+ */
 export function useConfigHistory() {
+  /** 历史配置列表响应式引用 */
   const configList = ref<HistoryItem[]>([]);
+  /** 本地存储异常提示信息 (为 null 表示正常) */
   const storageWarning = ref<string | null>(null);
 
   /**
-   * 严格校验单条历史记录是否符合规范 (A-10, R-09)
+   * 严格校验单条历史记录数据结构的完整性与类型合法性 (A-10, R-09)
+   * 
+   * 检查必填项、字符串有效性、版本号及正则格式，防止被非法篡改或脏数据破坏界面。
+   * 
+   * @param item 待校验的历史对象
+   * @returns boolean 是否为合法的 HistoryItem
    */
   function isValidHistoryItem(item: unknown): item is HistoryItem {
     if (!item || typeof item !== 'object') {
@@ -33,7 +51,7 @@ export function useConfigHistory() {
       return false;
     }
 
-    // 适配器名称长度限制
+    // 适配器名称长度限制，防止超长字符串注入攻击
     const adapterStr = record.adapter.trim();
     if (adapterStr.length === 0 || adapterStr.length > 256) return false;
 
@@ -59,6 +77,7 @@ export function useConfigHistory() {
       if (d2.length > 0 && !ipv4Regex.test(d2)) return false;
     }
 
+    // DoH 首选加密结构校验
     if (record.doh1 !== undefined && record.doh1 !== null) {
       if (typeof record.doh1 !== 'object') return false;
       const d1 = record.doh1 as Record<string, unknown>;
@@ -67,6 +86,7 @@ export function useConfigHistory() {
       if (typeof d1.allowFallback !== 'boolean') return false;
     }
 
+    // DoH 备用加密结构校验
     if (record.doh2 !== undefined && record.doh2 !== null) {
       if (typeof record.doh2 !== 'object') return false;
       const d2 = record.doh2 as Record<string, unknown>;
@@ -75,10 +95,12 @@ export function useConfigHistory() {
       if (typeof d2.allowFallback !== 'boolean') return false;
     }
 
+    // IPv6 协议组件开关校验
     if (record.ipv6Enabled !== undefined && record.ipv6Enabled !== null && typeof record.ipv6Enabled !== 'boolean') {
       return false;
     }
 
+    // IP 与 DNS 分配模式合法性校验
     if (record.ipMode !== undefined && record.ipMode !== null) {
       if (record.ipMode !== 'dhcp' && record.ipMode !== 'static' && record.ipMode !== 'keep') return false;
     }
@@ -86,6 +108,7 @@ export function useConfigHistory() {
       if (record.dnsMode !== 'dhcp' && record.dnsMode !== 'static' && record.dnsMode !== 'keep') return false;
     }
 
+    // IPv6 地址分配与 DNS 分配模式合法性校验
     if (record.ipv6Mode !== undefined && record.ipv6Mode !== null) {
       if (record.ipv6Mode !== 'dhcp' && record.ipv6Mode !== 'static' && record.ipv6Mode !== 'keep') return false;
     }
@@ -102,7 +125,12 @@ export function useConfigHistory() {
   }
 
   /**
-   * 从 localStorage 规范化加载历史，截断超额记录，过滤损坏数据 (A-10, R-09)
+   * 从 LocalStorage 安全加载并规范化历史记录 (A-10, R-09)
+   * 
+   * 执行逻辑：
+   * 1. 优先读取版本 1 数据，若不存在则平滑迁移旧格式数据；
+   * 2. 逐条执行严格合法性检查，自动剔除损坏异常数据；
+   * 3. 限制至多 10 条最新记录，完成迁移后持久化清洗后的有效记录。
    */
   function loadConfigList(): void {
     storageWarning.value = null;
@@ -110,7 +138,7 @@ export function useConfigHistory() {
 
     try {
       let raw = localStorage.getItem(CONFIG_KEY);
-      // 迁移旧版数据
+      // 兼容迁移旧版历史数据
       if (!raw) {
         const legacyRaw = localStorage.getItem(LEGACY_KEY);
         if (legacyRaw) {
@@ -168,16 +196,16 @@ export function useConfigHistory() {
         needPersistMigration = true;
       }
 
-      // 严格限制最大数量为 10
+      // 严格限制最大数量为 10 条
       configList.value = validList.slice(0, MAX_HISTORY_ITEMS);
 
-      // 旧数据格式成功迁移后，原子写入新 key 并清理旧 key (R-09, F-08)
+      // 旧数据格式成功迁移或发生清洗后，原子写入新 key 并清理旧 key (R-09, F-08)
       if (needPersistMigration) {
         try {
           localStorage.setItem(CONFIG_KEY, JSON.stringify(configList.value));
           localStorage.removeItem(LEGACY_KEY);
         } catch {
-          // 降级警告
+          // 降级静默，不抛出阻断异常
         }
       }
     } catch {
@@ -187,7 +215,15 @@ export function useConfigHistory() {
   }
 
   /**
-   * 安全保存配置至历史记录，发生存储异常时仅抛出警告，不阻塞网络成功流 (A-09)
+   * 安全保存配置至历史记录 (A-09)
+   * 
+   * 执行逻辑：
+   * 1. 深度比对当前所有字段，若已有完全相同的配置则将其移至队首（去重更新）；
+   * 2. 插入新记录并截断至上限 10 条；
+   * 3. 捕获 LocalStorage 容量超限或禁用异常，仅提示警告，绝不影响网络成功状态。
+   * 
+   * @param cfg 待保存的网络配置对象
+   * @returns { saved: boolean, warning?: string } 保存结果与警告信息
    */
   function saveConfig(cfg: Ipv4Config): { saved: boolean; warning?: string } {
     storageWarning.value = null;
@@ -216,7 +252,7 @@ export function useConfigHistory() {
       ipv6Dns2: cfg.ipv6Dns2?.trim(),
     };
 
-    // 检查是否已有相同配置项（根据字段比对）
+    // 检查是否已有完全相同的配置项（深度比较全量字段）
     const existingIndex = configList.value.findIndex(
       item =>
         item.adapter === newItem.adapter &&
@@ -260,7 +296,9 @@ export function useConfigHistory() {
   }
 
   /**
-   * 删除指定的单条历史 (R-09)
+   * 删除指定的单条历史记录 (R-09)
+   * 
+   * @param id 目标历史记录的唯一 ID
    */
   function removeConfig(id: string): void {
     configList.value = configList.value.filter(item => item.id !== id);

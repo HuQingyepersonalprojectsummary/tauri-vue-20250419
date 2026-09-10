@@ -9,15 +9,33 @@ import {
   validateIpv6Prefix,
 } from '../utils/validation';
 
+/**
+ * 网络配置业务管理组合式函数 (useNetworkConfig)
+ * 
+ * 核心架构职责：
+ * 1. 适配器生命周期管理：枚举系统所有可用网卡、选中切换与配置读回；
+ * 2. 独立草稿隔离机制：为每个网卡维护独立表单草稿缓存 (adapterDrafts)，彻底杜绝跨网卡配置串写；
+ * 3. 异步并发竞态防护：引入请求计数器 (requestCounter)，丢弃陈旧请求，确保界面严格展示最新选中的网卡数据；
+ * 4. 全量网络语义校验：提交前在前端进行严格的 IPv4、掩码、网关、DoH 模板及 IPv6 主备 DNS 合法性检查；
+ * 5. 事务性应用与回滚反馈：调用后端应用接口，实时捕获成功、失败与回滚诊断信息并同步刷新快照。
+ * 
+ * @param onConfigApplied 配置应用成功后的回调函数（通常用于触发历史记录保存）
+ */
 export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
+  /** 本地系统检测到的全部网络适配器列表 */
   const adapters = ref<AdapterInfo[]>([]);
+  /** 当前选中的目标网络适配器名称 */
   const selectedAdapter = ref('');
+  /** 全局异步加载状态指示器 (网络扫描或配置应用中) */
   const isLoading = ref(false);
+  /** 底部操作状态反馈文本 */
   const statusMsg = ref('');
+  /** 状态消息类型，驱动 UI 呈现不同强调色 (info | success | warning | error) */
   const statusType = ref<'info' | 'success' | 'warning' | 'error'>('info');
+  /** 当前选中网卡的底层全息实时快照 (反映最新生效的系统真实网络配置) */
   const currentSnapshot = ref<AdapterSnapshot | null>(null);
 
-  // 表单输入
+  /** 当前表单绑定的网络配置响应式对象 */
   const ipConfig = reactive<Ipv4Config>({
     adapter: '',
     ip: '',
@@ -47,15 +65,18 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     ipv6Dns2: '',
   });
 
-  // 每个适配器的独立草稿缓存，防止网卡切换时的配置串写 (A-08, R-04)
+  /** 每个适配器的独立草稿缓存 Map，防止在多网卡间切换时正在编辑的数据丢失或交叉串写 (A-08, R-04) */
   const adapterDrafts = new Map<string, Ipv4Config>();
 
-  // 标记当前是否正在受控载入历史，防止 watcher 异步调度引发草稿串写 (R-04)
+  /** 标记当前是否正在受控载入历史，防止 watcher 异步调度引发草稿串写覆盖 (R-04) */
   let isApplyingHistory = false;
+  /** 异步请求时序计数器，用于过滤因快速切换网卡而产生的陈旧在途异步回调 (R-04) */
   let requestCounter = 0;
 
   /**
-   * 清空表单字段至初始状态
+   * 清空表单字段至安全默认初始状态
+   * 
+   * @param adapterName 目标网络适配器名称
    */
   function clearFormFields(adapterName: string): void {
     ipConfig.adapter = adapterName;
@@ -88,7 +109,9 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   }
 
   /**
-   * 加载所有网络适配器
+   * 加载并枚举系统中的所有网络适配器
+   * 
+   * 成功获取列表后，若当前未选中任何网卡或原网卡已脱机，自动默认选中首个有效适配器。
    */
   async function loadAdapters(): Promise<void> {
     isLoading.value = true;
@@ -116,7 +139,12 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   }
 
   /**
-   * 获取指定网卡的当前实际配置
+   * 获取指定网卡的当前实际现场配置快照
+   * 
+   * 通过递增序列号校验，丢弃陈旧请求结果，防止快速切换网卡时的竞态覆盖。
+   * 读取成功后同步刷新表单字段与对应网卡的草稿缓存。
+   * 
+   * @param targetAdapter 目标网络适配器别名
    */
   async function fetchCurrentConfig(targetAdapter: string): Promise<void> {
     if (!targetAdapter) return;
@@ -134,7 +162,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       }
       currentSnapshot.value = snapshot;
 
-      // 填充表单
+      // 填充表单字段
       ipConfig.adapter = targetAdapter;
       ipConfig.ip = snapshot.ip || '';
       ipConfig.mask = snapshot.mask || '255.255.255.0';
@@ -158,7 +186,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       ipConfig.ipv6Dns1 = snapshot.ipv6Dns1 || '';
       ipConfig.ipv6Dns2 = snapshot.ipv6Dns2 || '';
 
-      // 同步更新草稿
+      // 同步更新独立草稿缓存
       adapterDrafts.set(targetAdapter, JSON.parse(JSON.stringify(ipConfig)));
 
       statusMsg.value = `已读取 [${targetAdapter}] 当前配置 (IPv4: ${snapshot.dhcpEnabled ? 'DHCP' : '静态'}, IPv6: ${snapshot.ipv6DhcpEnabled !== false ? 'DHCP' : '静态'})`;
@@ -186,7 +214,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     }
 
     if (oldAdapter && ipConfig.adapter === oldAdapter) {
-      // 保存旧网卡的当前草稿
+      // 切换前保存旧网卡的当前草稿
       adapterDrafts.set(oldAdapter, JSON.parse(JSON.stringify(ipConfig)));
     }
 
@@ -236,7 +264,14 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   });
 
   /**
-   * 应用表单配置到系统网络
+   * 将当前表单中的网络配置应用到操作系统中
+   * 
+   * 步骤：
+   * 1. 基础校验：网卡一致性、静态模式必填项、无前导零 IPv4、连续掩码、同子网网关；
+   * 2. DNS 组合校验：必须优先配置 DNS1 才能配置 DNS2，DoH 模板格式校验；
+   * 3. IPv6 组合校验：静态 IPv6 格式、前缀范围 1..=128、默认网关、主备 IPv6 DNS 依赖关系校验；
+   * 4. 构造完整 Payload 提交后端，触发事务性配置与循环读回比对；
+   * 5. 依据后端返回结果展示成功反馈或自动安全回滚诊断提示。
    */
   async function applyConfig(): Promise<void> {
     if (!selectedAdapter.value) {
@@ -279,7 +314,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         return;
       }
 
-      // 可选字段校验 (A-07)
+      // 可选网关同网段可达性校验 (A-07)
       if (ipConfig.gateway.trim()) {
         const gwCheck = validateGatewayInSubnet(ipConfig.ip, ipConfig.mask, ipConfig.gateway);
         if (!gwCheck.valid) {
@@ -377,7 +412,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
 
       if (ipConfig.ipv6DnsMode === 'static') {
         if (!ipConfig.ipv6Dns1?.trim() && ipConfig.ipv6Dns2?.trim()) {
-          statusMsg.value = '若配置辅助 IPv6 DNS，必须先配置首选 IPv6 DNS (DNS1)';
+          statusMsg.value = '若配置备用 IPv6 DNS，必须先配置首选 IPv6 DNS (DNS1)';
           statusType.value = 'warning';
           return;
         }
@@ -389,7 +424,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         }
 
         if (ipConfig.ipv6Dns2?.trim() && !validateIpv6Address(ipConfig.ipv6Dns2)) {
-          statusMsg.value = '辅助 IPv6 DNS (DNS2) 格式不正确';
+          statusMsg.value = '备用 IPv6 DNS (DNS2) 格式不正确';
           statusType.value = 'warning';
           return;
         }
@@ -467,6 +502,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
 
   /**
    * 从历史记录原子回填至当前表单，彻底规避 Vue watcher 异步竞争 (R-04)
+   * 
+   * @param cfg 包含历史配置字段的对象
    */
   function fillFromHistory(cfg: Partial<Ipv4Config> & { ip: string; mask: string }): void {
     // 历史目标网卡身份核验：若指定了网卡但该网卡在系统中不存在，严禁静默套用到当前选中的网卡上 (R-04, F-06)
@@ -511,7 +548,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     };
     adapterDrafts.set(targetAdapter, historyDraft);
 
-    // 若需要切换网卡，通过标记锁定 watcher 逻辑
+    // 若需要切换网卡，通过标记锁定 watcher 逻辑，防止 watcher 内部异步清理草稿
     if (selectedAdapter.value !== targetAdapter) {
       isApplyingHistory = true;
       selectedAdapter.value = targetAdapter;

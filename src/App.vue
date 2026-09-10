@@ -1,10 +1,21 @@
 <script setup lang="ts">
+/**
+ * Windows 网络配置工具主界面组件
+ * 
+ * 架构整合：
+ * 1. 组合式状态管理：通过 `useNetworkConfig` 集中调度网卡枚举、快照采集、草稿隔离与事务配置；
+ * 2. 历史预设持久化：通过 `useConfigHistory` 安全读写本地 LocalStorage，防篡改隔离；
+ * 3. 权威公共 DNS 快捷预设：内置阿里、腾讯 DNSPod、Cloudflare、Google 的 IPv4、IPv6（主备）及 DoH 模板；
+ * 4. Fluent 交互体验：集成符合 Windows 11 原生规范的模式切换与无障碍操作。
+ */
 import { onMounted } from 'vue';
 import { useNetworkConfig } from './composables/useNetworkConfig';
 import { useConfigHistory } from './composables/useConfigHistory';
 
+// 初始化历史配置管理
 const { configList, storageWarning, loadConfigList, saveConfig, removeConfig } = useConfigHistory();
 
+// 初始化网络配置主控制流
 const {
   adapters,
   selectedAdapter,
@@ -18,10 +29,13 @@ const {
   applyConfig,
   fillFromHistory,
 } = useNetworkConfig(appliedConfig => {
-  // 网络修改成功后保存历史，若本地存储失败只产生警告，不将网络标记为失败 (A-09)
+  // 网络修改成功后自动记录至历史列表，若本地存储发生异常仅提示警告，绝不阻断网络成功流 (A-09)
   saveConfig(appliedConfig);
 });
 
+/**
+ * IPv4 与 DoH 公共服务商预设接口
+ */
 interface DnsProviderPreset {
   name: string;
   ip1: string;
@@ -30,6 +44,7 @@ interface DnsProviderPreset {
   dohTemplate2: string;
 }
 
+/** 常用主流公共 IPv4 DNS 与 DoH 加密模板预设列表 */
 const PRESET_PROVIDERS: DnsProviderPreset[] = [
   {
     name: '阿里公共DNS',
@@ -61,12 +76,16 @@ const PRESET_PROVIDERS: DnsProviderPreset[] = [
   },
 ];
 
+/**
+ * 权威 IPv6 公共 DNS 预设接口 (完整支持首选与备用 IPv6 DNS)
+ */
 interface Ipv6DnsPreset {
   name: string;
   dns1: string;
   dns2: string;
 }
 
+/** 权威公共 IPv6 DNS 预设列表 (包含首选 Primary 与备用 Secondary) */
 const PRESET_IPV6_PROVIDERS: Ipv6DnsPreset[] = [
   {
     name: '阿里IPv6 DNS',
@@ -95,6 +114,11 @@ const PRESET_IPV6_PROVIDERS: Ipv6DnsPreset[] = [
   },
 ];
 
+/**
+ * 一键应用 IPv4 DNS 与 DoH 加密预设
+ * 
+ * 自动将 DNS 切换为静态模式，并填入首选/备用 IP 及对应官方 HTTPS 解析模板
+ */
 function applyDnsPreset(preset: DnsProviderPreset) {
   ipConfig.dnsMode = 'static';
   ipConfig.dns1 = preset.ip1;
@@ -111,12 +135,18 @@ function applyDnsPreset(preset: DnsProviderPreset) {
   };
 }
 
+/**
+ * 一键应用权威 IPv6 DNS 预设
+ * 
+ * 自动将 IPv6 DNS 切换为静态模式，并同时填入首选 (Primary) 与备用 (Secondary) 地址
+ */
 function applyIpv6DnsPreset(preset: Ipv6DnsPreset) {
   ipConfig.ipv6DnsMode = 'static';
   ipConfig.ipv6Dns1 = preset.dns1;
   ipConfig.ipv6Dns2 = preset.dns2;
 }
 
+// 页面挂载时初始化扫描网络网卡与加载历史记录
 onMounted(() => {
   loadAdapters();
   loadConfigList();

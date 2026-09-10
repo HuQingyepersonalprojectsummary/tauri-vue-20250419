@@ -194,7 +194,13 @@ mod job_control {
     }
 }
 
-/// 安全运行子进程，支持 stdin 写入和全局总超时强行回收，利用 Windows Job Object 彻底杜绝后代进程游离 (A-04, R-05, F-04)
+/// 安全运行系统子进程 (A-04, R-05, F-04)
+///
+/// 核心特性：
+/// 1. 静默无窗口执行：通过 Windows 原生标志位 `CREATE_NO_WINDOW (0x08000000)`，彻底杜绝控制台黑框与终端闪烁；
+/// 2. 进程树生命周期管理：通过 Windows Job Object 将子进程及其派生的所有孙进程绑定，主进程终止或超时时强制一网打尽，绝无孤儿进程残留；
+/// 3. 安全管道传输：支持通过 stdin 安全传递结构化参数，杜绝动态字符串拼接引起的注入隐患；
+/// 4. 异步超时回收与容量保护：设置上限 2MB 缓冲区与精准计时器，防止管道阻塞或无限挂起引发的 OOM。
 pub fn run_command_with_timeout(
     program: &Path,
     args: &[&str],
@@ -217,6 +223,8 @@ pub fn run_command_with_timeout(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        // Windows API 创建标志: CREATE_NO_WINDOW (0x08000000)
+        // 创建无控制台窗口的后台进程，彻底消除打开应用或修改网络时的黑框闪烁，且零额外系统开销
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
@@ -1929,10 +1937,12 @@ pub fn apply_adapter_ipv4_config_transactional(
             }
         }
 
-        // 7. 应用 IPv6 DNS 设置 (根据 ipv6_dns_mode 决定)
+        // 7. 应用 IPv6 DNS 设置 (根据 ipv6_dns_mode 决定，完整支持首选与备用 IPv6 DNS)
         if ipv6_dns_mode == "static" {
             let v6_d1 = cfg.ipv6_dns1.trim();
             if !v6_d1.is_empty() {
+                // 设置首选 IPv6 DNS 服务器 (Primary)
+                // 采用 validate=no 防止因网络探测超时导致 netsh 挂起数十秒
                 let set_v6_dns = run_command_with_timeout(
                     &netsh,
                     &[
@@ -1958,6 +1968,7 @@ pub fn apply_adapter_ipv4_config_transactional(
 
                 let v6_d2 = cfg.ipv6_dns2.trim();
                 if !v6_d2.is_empty() {
+                    // 追加备用 IPv6 DNS 服务器 (Secondary, 指定 index=2 建立权威主备解析顺序)
                     let add_v6_dns = run_command_with_timeout(
                         &netsh,
                         &[

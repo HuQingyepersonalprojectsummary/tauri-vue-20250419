@@ -1,16 +1,23 @@
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-/// 网络适配器概要信息
+/// 网络适配器概要信息 (用于前端网卡列表渲染与状态概览)
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AdapterInfo {
+    /// 适配器接口名称 (例如: "以太网", "WLAN")
     pub name: String,
+    /// 用户友好的状态展示文本 (例如: "已连接", "未连接")
     pub status: String,
+    /// 系统底层原始状态值 (如 "Up", "Disconnected")
     pub raw_status: String,
+    /// 硬件网卡驱动描述名称 (如 "Realtek Gaming 2.5GbE Family Controller")
     pub display_name: String,
+    /// 网卡接口数字索引 (ifIndex)
     pub interface_index: u32,
+    /// 网卡唯一全局标识符 GUID
     pub interface_guid: String,
+    /// 物理 MAC 地址 (如 "00-1A-2B-3C-4D-5E")
     pub mac_address: Option<String>,
 }
 
@@ -18,8 +25,11 @@ pub struct AdapterInfo {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Ipv4AddressConfig {
+    /// IPv4 地址点分十进制字符串
     pub ip_address: String,
+    /// 网络前缀长度 (0..=32，如 24 对应 255.255.255.0)
     pub prefix_length: u8,
+    /// 点分十进制子网掩码字符串
     pub mask: String,
 }
 
@@ -27,19 +37,24 @@ pub struct Ipv4AddressConfig {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Ipv6AddressConfig {
+    /// IPv6 地址字符串
     pub ip_address: String,
+    /// 网络前缀长度 (1..=128，通常为 64)
     pub prefix_length: u8,
 }
 
-/// DNS over HTTPS (DoH) 配置项
+/// DNS over HTTPS (DoH) 加密解析配置项
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DohConfig {
-    pub mode: String, // "off" | "auto" | "manual"
+    /// 加密模式: "off" (关闭) | "auto" (自动升级) | "manual" (手动指定 HTTPS 模板)
+    pub mode: String,
+    /// DoH 模板 URL (如 https://doh.pub/dns-query, 仅 manual 模式必需)
     #[serde(default)]
-    pub template: String, // DoH 模板 URL (如 https://doh.pub/dns-query)
+    pub template: String,
+    /// 解析失败时是否允许回退到未加密常规 DNS 请求 (容灾保证可用性)
     #[serde(default)]
-    pub allow_fallback: bool, // 失败时是否回退使用未加密请求
+    pub allow_fallback: bool,
 }
 
 impl Default for DohConfig {
@@ -52,73 +67,101 @@ impl Default for DohConfig {
     }
 }
 
-/// 系统级全局 DoH 服务器条目配置 (N-02)
+/// Windows 11 系统级全局 DoH 服务器条目配置 (N-02)
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DohServerSetting {
+    /// 该 DNS 服务器绑定的 HTTPS 模板 URL
     #[serde(default)]
     pub template: String,
+    /// 是否允许降级为未加密请求
     #[serde(default)]
     pub allow_fallback: bool,
+    /// 是否允许系统自动升级为 DoH
     #[serde(default)]
     pub auto_upgrade: bool,
 }
 
-/// 适配器完整快照（同时提供便捷的一维字段以保证兼容性）
+/// 适配器全息运行时快照（包含当前生效的 IPv4/IPv6/DNS/DoH 状态，兼备单项便捷字段）
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AdapterSnapshot {
+    /// 目标适配器别名
     pub adapter_name: String,
+    /// 接口数字索引
     pub interface_index: u32,
+    /// 接口唯一 GUID
     pub interface_guid: String,
+    /// 连接状态
     pub status: String,
+    /// IPv4 是否启用了 DHCP 自动获取
     pub dhcp_enabled: bool,
+    /// IPv4 DNS 是否由 DHCP 自动下发
     #[serde(default)]
     pub dns_dhcp_enabled: bool,
+    /// 适配器绑定的全部 IPv4 地址集合
     pub addresses: Vec<Ipv4AddressConfig>,
+    /// 适配器当前生效的 IPv4 默认网关集合
     pub gateways: Vec<String>,
+    /// 适配器当前生效的 IPv4 DNS 服务器集合 (首项为首选，次项为备用)
     pub dns_servers: Vec<String>,
-    // 兼容原 Ipv4Config 字段
+    // 兼容一维便捷字段
     pub ip: String,
     pub mask: String,
     pub gateway: String,
     pub dns1: String,
     pub dns2: String,
     // DoH 与 IPv6 扩展字段
+    /// 首选 DNS 绑定的 DoH 加密状态
     #[serde(default)]
     pub doh1: Option<DohConfig>,
+    /// 备用 DNS 绑定的 DoH 加密状态
     #[serde(default)]
     pub doh2: Option<DohConfig>,
+    /// IPv6 协议组件 (ms_tcpip6) 是否处于启用状态
     #[serde(default = "default_true")]
     pub ipv6_enabled: bool,
-    // 系统级全局已配置的 DoH 服务器表 (N-02)
+    /// Windows 注册表/系统级已注册的 DoH 服务器表 (N-02)
     #[serde(default)]
     pub doh_settings: HashMap<String, DohServerSetting>,
+    /// 系统内核是否支持 DoH
     #[serde(default = "default_true")]
     pub doh_supported: bool,
-    // IPv6 扩展字段
+    // IPv6 详细扩展字段
+    /// IPv6 地址分配模式 ("dhcp" | "static")
     #[serde(default)]
     pub ipv6_mode: Option<String>,
+    /// 静态 IPv6 地址
     #[serde(default)]
     pub ipv6_ip: String,
+    /// 静态 IPv6 前缀长度
     #[serde(default)]
     pub ipv6_prefix: Option<u8>,
+    /// 静态 IPv6 默认网关
     #[serde(default)]
     pub ipv6_gateway: String,
+    /// IPv6 DNS 分配模式 ("dhcp" | "static")
     #[serde(default)]
     pub ipv6_dns_mode: Option<String>,
+    /// 首选 IPv6 DNS (Primary)
     #[serde(default)]
     pub ipv6_dns1: String,
+    /// 备用 IPv6 DNS (Secondary)
     #[serde(default)]
     pub ipv6_dns2: String,
+    /// 绑定的全部 IPv6 地址集合
     #[serde(default)]
     pub ipv6_addresses: Vec<Ipv6AddressConfig>,
+    /// 生效的全部 IPv6 默认网关集合
     #[serde(default)]
     pub ipv6_gateways: Vec<String>,
+    /// 生效的全部 IPv6 DNS 服务器集合
     #[serde(default)]
     pub ipv6_dns_servers: Vec<String>,
+    /// IPv6 地址是否由 DHCPv6 / SLAAC 自动获取
     #[serde(default = "default_true")]
     pub ipv6_dhcp_enabled: bool,
+    /// IPv6 DNS 是否由 DHCPv6 自动下发
     #[serde(default = "default_true")]
     pub ipv6_dns_dhcp_enabled: bool,
 }
@@ -127,43 +170,61 @@ fn default_true() -> bool {
     true
 }
 
-/// 前端提交的 IPv4 配置意图 (支持显式协议意图: "dhcp" | "static" | "keep") (N-07)
+/// 前端提交的网络配置变更意图 (支持显式协议意图: "dhcp" | "static" | "keep") (N-07)
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Ipv4Config {
+    /// 目标适配器别名
     pub adapter: String,
+    /// IPv4 地址分配意图 ("dhcp" | "static" | "keep")
     #[serde(default)]
-    pub ip_mode: Option<String>, // "dhcp" | "static" | "keep"
+    pub ip_mode: Option<String>,
+    /// 静态 IPv4 地址 (静态模式必填)
     #[serde(default)]
     pub ip: String,
+    /// 静态 IPv4 子网掩码 (静态模式必填)
     #[serde(default)]
     pub mask: String,
+    /// 静态 IPv4 默认网关 (可选)
     #[serde(default)]
     pub gateway: String,
+    /// IPv4 DNS 分配意图 ("dhcp" | "static" | "keep")
     #[serde(default)]
-    pub dns_mode: Option<String>, // "dhcp" | "static" | "keep"
+    pub dns_mode: Option<String>,
+    /// 首选 IPv4 DNS
     #[serde(default)]
     pub dns1: String,
+    /// 备用 IPv4 DNS
     #[serde(default)]
     pub dns2: String,
+    /// 首选 DoH 配置
     #[serde(default)]
     pub doh1: Option<DohConfig>,
+    /// 备用 DoH 配置
     #[serde(default)]
     pub doh2: Option<DohConfig>,
+    /// 是否开启此适配器的 IPv6 协议组件 (None 表示不变更)
     #[serde(default)]
     pub ipv6_enabled: Option<bool>,
+    /// IPv6 地址分配意图 ("dhcp" | "static" | "keep")
     #[serde(default)]
-    pub ipv6_mode: Option<String>, // "dhcp" | "static" | "keep"
+    pub ipv6_mode: Option<String>,
+    /// 静态 IPv6 地址
     #[serde(default)]
     pub ipv6_ip: String,
+    /// 静态 IPv6 前缀长度 (1..=128)
     #[serde(default)]
     pub ipv6_prefix: Option<u8>,
+    /// 静态 IPv6 默认网关
     #[serde(default)]
     pub ipv6_gateway: String,
+    /// IPv6 DNS 分配意图 ("dhcp" | "static" | "keep")
     #[serde(default)]
-    pub ipv6_dns_mode: Option<String>, // "dhcp" | "static" | "keep"
+    pub ipv6_dns_mode: Option<String>,
+    /// 首选 IPv6 DNS 服务器 (Primary)
     #[serde(default)]
     pub ipv6_dns1: String,
+    /// 备用 IPv6 DNS 服务器 (Secondary)
     #[serde(default)]
     pub ipv6_dns2: String,
 }

@@ -6,6 +6,7 @@ use tauri::async_runtime::Mutex;
 use tauri::State;
 
 /// 全局网络配置写操作锁，确保当前进程内写操作串行化执行 (A-03, A-04)
+/// 防止并发重复调用网络配置 API 导致系统网络状态竞争混乱
 pub struct NetworkLock(pub Mutex<()>);
 
 #[cfg(windows)]
@@ -33,19 +34,26 @@ mod sys_mutex {
         fn GetLastError() -> u32;
     }
 
+    /// 跨进程互斥锁获取可能遇到的错误枚举
     #[derive(Debug, PartialEq, Eq)]
     pub enum MutexError {
+        /// 权限不足 (如非特权进程尝试打开 Global 互斥锁)
         AccessDenied,
+        /// 等待超时 (已有另一个进程正在持有写操作锁)
         Timeout,
+        /// 系统调用异常
         SystemError(String),
     }
 
-    /// 跨进程具名互斥体保护，防止多个应用实例交错修改系统网络 (R-08, F-07, N-01)
+    /// Windows 原生跨进程具名互斥体封装 (RAII 自动释放)
+    ///
+    /// 确保即使运行了多个程序实例或有其他进程，同一时刻也仅有一个进程能下发网络修改指令。
     pub struct CrossProcessLock {
         handle: RawHandle,
     }
 
     impl CrossProcessLock {
+        /// 尝试打开或创建系统命名互斥体并等待指定超时毫秒数
         pub fn acquire_raw(name: &str, timeout_ms: u32) -> Result<Self, MutexError> {
             let wide: Vec<u16> = OsStr::new(name)
                 .encode_wide()
@@ -78,6 +86,7 @@ mod sys_mutex {
             }
         }
 
+        /// 阻塞获取互斥锁并返回面向用户的友好错误描述
         pub fn acquire(name: &str, timeout_ms: u32) -> Result<Self, String> {
             match Self::acquire_raw(name, timeout_ms) {
                 Ok(lock) => Ok(lock),
@@ -91,8 +100,8 @@ mod sys_mutex {
             }
         }
 
-        /// 获取跨会话 Global 互斥体，严格保证系统级单实例修改网络 (F-07, N-01)
-        /// 严禁将争用超时 (WAIT_TIMEOUT) 或权限不足回退至 Local 锁，杜绝跨权限等级进程互斥失效！
+        /// 获取跨用户会话的 Global 互斥体，严格保证系统级单实例修改网络 (F-07, N-01)
+        /// 严禁将超时 (WAIT_TIMEOUT) 降级回退至 Local 锁，杜绝跨权限等级进程互斥失效
         pub fn acquire_global_or_local(base_name: &str, timeout_ms: u32) -> Result<Self, String> {
             let global_name = format!("Global\\{}", base_name);
             Self::acquire(&global_name, timeout_ms)
@@ -100,6 +109,7 @@ mod sys_mutex {
     }
 
     impl Drop for CrossProcessLock {
+        /// 作用域析构时自动释放互斥锁并关闭句柄
         fn drop(&mut self) {
             if !self.handle.is_null() {
                 unsafe {
@@ -113,15 +123,19 @@ mod sys_mutex {
     unsafe impl Send for CrossProcessLock {}
 }
 
+/// 前端 Tauri 可直接通过 invoke 调用的 IPC 指令模块
 pub mod commands {
     use super::*;
 
+    /// 问候测试指令
     #[tauri::command]
     pub fn greet(name: &str) -> String {
         format!("Hello, {}! You've been greeted from Rust!", name)
     }
 
-    /// 异步获取所有网络适配器列表，避免阻塞 UI 线程 (A-04)
+    /// 异步获取系统中所有物理与虚拟网络适配器列表 (A-04)
+    ///
+    /// 将系统枚举网卡开销委托给独立阻塞线程池处理，绝不阻塞 UI 渲染主线程。
     #[tauri::command]
     pub async fn get_network_adapters() -> Result<Vec<AdapterInfo>, String> {
         tauri::async_runtime::spawn_blocking(platform::list_network_adapters)
@@ -129,7 +143,9 @@ pub mod commands {
             .map_err(|e| format!("调度查询适配器任务失败: {}", e))?
     }
 
-    /// 异步单次提取适配器完整网络快照 (A-04, A-05)
+    /// 异步获取指定适配器的全息运行时快照 (A-04, A-05)
+    ///
+    /// 包含 IPv4 地址、掩码、网关、DNS、IPv6 绑定与主备 DNS、DoH 模板等全量网络参数。
     #[tauri::command]
     pub async fn get_current_config(adapter_name: String) -> Result<AdapterSnapshot, String> {
         tauri::async_runtime::spawn_blocking(move || platform::get_adapter_snapshot(&adapter_name))
@@ -137,7 +153,13 @@ pub mod commands {
             .map_err(|e| format!("调度获取当前配置任务失败: {}", e))?
     }
 
-    /// 事务式应用 IPv4 配置，包含事前快照、校验、跨进程互斥锁与自动回滚 (A-01, A-03, A-06, R-08, F-07)
+    /// 事务式应用网络配置 (含 IPv4 / IPv6 / DNS / DoH) (A-01, A-03, A-06, R-08, F-07)
+    ///
+    /// 执行流程：
+    /// 1. 获取进程内异步写锁 (NetworkLock)；
+    /// 2. 获取 Windows 系统级跨进程具名互斥体 (5000ms 超时防死锁)；
+    /// 3. 进入事务引擎：前置全息快照 -> 网络语义复验 -> 分步执行 -> 读回深度比对校验；
+    /// 4. 若任何环节失败或读回不一致，自动触发安全回滚，还原修改前快照。
     #[tauri::command]
     pub async fn apply_adapter_ipv4_config(
         cfg: Ipv4Config,
@@ -158,7 +180,7 @@ pub mod commands {
     }
 }
 
-/// 启动 Tauri 应用程序
+/// 启动 Tauri 应用程序核心上下文
 pub fn run() {
     tauri::Builder::default()
         .manage(NetworkLock(Mutex::new(())))
