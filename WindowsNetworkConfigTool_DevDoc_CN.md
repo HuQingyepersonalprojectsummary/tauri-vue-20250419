@@ -82,6 +82,8 @@ await networkClient.applyAdapterIpv4Config({
 
 AdapterSnapshot 包含接口名称、GUID/index、状态、IPv4 地址列表、网关、DNS、DoH 状态和 IPv6 详细字段。IPv6 地址保存 ipAddress、prefixLength、prefixOrigin、suffixOrigin；来源缺失保持未知。来源信息用于区分原手动地址与 DHCP/SLAAC 地址，不能仅按 IP 字符串判断恢复完成。
 
+当目标适配器处于未绑定或禁用 IPv6 协议栈状态（如系统组件 `ms_tcpip6` 为 False）时，底层 CIM 查询 `Get-NetIPInterface -AddressFamily IPv6` 与 `Get-DnsClientServerAddress` 会抛出“找不到匹配对象”异常。快照脚本捕获该空匹配异常并执行安全回退（IPv6 地址/DNS/网关为空列表，`ipv6Enabled=false`，`ipv6DhcpEnabled=true`），确保不影响 IPv4 配置读取。
+
 OperationResult 的含义：
 
 - success：请求通过了应用后的读回核验。
@@ -106,7 +108,7 @@ OperationResult 的含义：
 
 ## 5. 系统执行与权限
 
-PowerShell 使用固定脚本，通过 stdin JSON 传入数据；netsh 使用独立参数数组。系统工具由可信系统目录定位，不能将用户输入拼进脚本。子进程配置 CREATE_NO_WINDOW；release 主程序使用 GUI 子系统。
+PowerShell 使用固定脚本，通过 stdin JSON 传入数据；netsh 使用独立参数数组。系统工具由可信系统目录定位，不能将用户输入拼进脚本。子进程配置 CREATE_NO_WINDOW；release 主程序使用 GUI 子系统。快照采集中的 CIM 查询（`Get-NetIPInterface`、`Get-DnsClientServerAddress`）统一配置 `-ErrorAction Stop` 并匹配空对象异常（如针对禁用 IPv6 网卡），实现底层容错。
 
 执行器设置超时并使用 Windows Job Object 管理子进程，但 Job 创建/绑定失败及终止确认仍有待完善的路径。命名互斥体在 Global 等待超时后不会改取 Local；权限拒绝回退 Local 的跨权限隔离仍未完成验证。
 

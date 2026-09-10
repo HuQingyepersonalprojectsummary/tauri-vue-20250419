@@ -77,7 +77,7 @@ The address is for documentation; replace it with the intended resolver.
 
 ### Snapshots and outcomes
 
-AdapterSnapshot contains identity, status, IPv4 addresses/gateways/DNS, DoH and IPv6 state. Each IPv6 address includes ipAddress, prefixLength, prefixOrigin and suffixOrigin. Missing origin stays unknown; it must never be inferred as Manual.
+AdapterSnapshot contains identity, status, IPv4 addresses/gateways/DNS, DoH and IPv6 state. Each IPv6 address includes ipAddress, prefixLength, prefixOrigin and suffixOrigin. Missing origin stays unknown; it must never be inferred as Manual. When an adapter has IPv6 unbound or disabled (e.g., `ms_tcpip6` is False), CIM queries (`Get-NetIPInterface -AddressFamily IPv6` and `Get-DnsClientServerAddress`) throw "No matching objects". The script catches this and performs a graceful fallback (`ipv6Enabled=false`, empty IPv6 lists, `ipv6DhcpEnabled=true`), ensuring IPv4 configuration queries succeed uninterrupted.
 
 OperationResult.success means the requested changes passed read-back verification. message preserves the outcome or initial error. rolledBack means compensation commands and restoration verification both passed, not merely that rollback was attempted. rollbackMessage must be shown on failure. snapshot may be null if the final state could not be read; clear stale UI state in that case.
 
@@ -97,7 +97,7 @@ This is command-by-command compensation, not an atomic OS transaction or a guara
 
 ## 5. Processes, permissions and state
 
-PowerShell receives JSON through stdin and uses fixed scripts; netsh receives separate arguments. Resolve executables from trusted system directories. The runner applies CREATE_NO_WINDOW, timeouts and Windows Job Object management. Job creation/assignment failures and termination confirmation still require work. A Global mutex timeout does not fall back to Local, while the access-denied fallback remains an isolation limitation.
+PowerShell receives JSON through stdin and uses fixed scripts; netsh receives separate arguments. Resolve executables from trusted system directories. The runner applies CREATE_NO_WINDOW, timeouts and Windows Job Object management. Snapshot CIM queries (`Get-NetIPInterface`, `Get-DnsClientServerAddress`) employ `-ErrorAction Stop` and regex fallback matching against absent interface instances (e.g. disabled IPv6 stacks) to ensure robust enumeration. Job creation/assignment failures and termination confirmation still require work. A Global mutex timeout does not fall back to Local, while the access-denied fallback remains an isolation limitation.
 
 There is no on-demand elevated helper or requireAdministrator application manifest. Users must run the application as administrator to write network settings. An installer's UAC request does not establish that the application elevates automatically.
 

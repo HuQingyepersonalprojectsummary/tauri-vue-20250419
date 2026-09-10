@@ -54,6 +54,13 @@
   - 引入 Windows 命名全局互斥体 `Global\tauri_network_config_tool_mutex`，配合 150ms 超时快速失败，防止连击和多开竞态；
   - 单元测试 `test_cross_process_lock_timeout_prevents_local_bypass` 验证了锁超时能正确拦截并发请求。
 
+### 2.5 未启用 IPv6 网卡的 CIM 查询容错闭环
+- **问题背景**：对于未启用或未绑定 IPv6 的适配器（例如部分虚拟网卡或显式关闭 IPv6 的网卡），调用 `Get-NetIPInterface -AddressFamily IPv6` 与 `Get-DnsClientServerAddress` 会导致 Windows CIM 查询因无匹配对象而抛出 `No matching MSFT_NetIPInterface objects found` 终止性错误，阻断配置快照读取。
+- **修复方案**：
+  - 在 `platform.rs` 的快照脚本中，为 IPv4/IPv6 的 `Get-NetIPInterface` 与 `Get-DnsClientServerAddress` 命令统一添加 `-ErrorAction Stop` 并匹配空对象异常（`No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound`）；
+  - 捕获该异常时静默回退，置空相关字段，保证基础 IPv4 配置与常规网卡信息正常解析。
+- **验证**：实机针对本地已禁用 IPv6 的 `以太网 2`（InterfaceIndex = 21）直接验证，成功读取全部 IPv4 配置、网关及 DNS，状态正常且 UI 展现无阻断。
+
 ---
 
 ## 3. 发布物完整性记录

@@ -33,7 +33,8 @@
      - 单网卡绑定多个辅助静态 IP 或别名地址的高级路由属性；
      - 自定义接口跃点数（InterfaceMetric）与单路由跃点数（RouteMetric）；
      - PolicyStore 路由策略与 SkipAsSource 标志；
-     - 复杂多网关路由表的细粒度度量值（辅助网关恢复时按递增缺省 metric 重建）。
+     - 复杂多网关路由表的细粒度度量值（辅助网关恢复时按递增缺省 metric 重建）；
+     - 未绑定或显式禁用 IPv6 的适配器在 Windows 内核中无 `MSFT_NetIPInterface` 实例，程序会识别其为未启用状态，用户在界面开启 IPv6 时才通过 `Enable-NetAdapterBinding` 重新绑定协议栈。
 4. **动态地址（DHCP / SLAAC）恢复特性**：
    - 当由静态模式回滚恢复为 DHCP / 自动获取时，程序向系统发出开启 DHCP/自动配置命令，动态 IP 的获取取决于路由器或 DHCP 服务器的响应。
    - 恢复校验确认该网卡重新处于自动获取状态且原静态污染已被清除，但不强制断言重新获取的动态 IP 字符串与配置前完全一致。
