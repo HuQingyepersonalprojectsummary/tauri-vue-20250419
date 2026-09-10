@@ -294,7 +294,10 @@ mod tests {
             stdout: "stdout msg".to_string(),
             stderr: "stderr msg".to_string(),
         };
-        assert_eq!(super::platform::format_process_error(&out_both), "stderr msg");
+        assert_eq!(
+            super::platform::format_process_error(&out_both),
+            "stderr msg"
+        );
 
         let out_stdout_only = ProcessOutput {
             success: false,

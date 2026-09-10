@@ -13,7 +13,7 @@
 
 | 检查项 | 验证命令 | 结果 | 覆盖范围与说明 |
 |---|---|---|---|
-| **Rust 单元测试** | `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline` | **14 passed** / 0 failed | IPv4/IPv6 格式校验、连续掩码计算、网关同子网断言、DNS/DoH 组合校验、跨进程全局锁超时测试、子进程静默执行（CREATE_NO_WINDOW）测试 |
+| **Rust 单元测试** | `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline` | **17 passed** / 0 failed | IPv4/IPv6 格式校验、连续掩码计算、网关同子网断言、DNS/DoH 组合校验、跨进程全局锁超时测试、子进程静默执行测试、Netsh 参数格式化与引用测试、错误输出兜底回退测试、管理员特权前置检测 |
 | **Rust 代码规范** | `cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings` | **0 warnings** | 严格启用零警告策略（`-D warnings`），涵盖全 target（lib、bin、tests） |
 | **Rust 代码格式** | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | **0 diff** | 统一采用 `rustfmt` 标准格式规范 |
 | **前端类型检查** | `npm run typecheck` (`vue-tsc --noEmit`) | **0 errors** | 严格类型模式，Vue 组件、Composable、API 客户端及网络 DTO 类型全部匹配 |
@@ -61,18 +61,38 @@
   - 捕获该异常时静默回退，置空相关字段，保证基础 IPv4 配置与常规网卡信息正常解析。
 - **验证**：实机针对本地已禁用 IPv6 的 `以太网 2`（InterfaceIndex = 21）直接验证，成功读取全部 IPv4 配置、网关及 DNS，状态正常且 UI 展现无阻断。
 
+### 2.6 Netsh 参数引用规范与标准错误输出容错
+- **问题背景**：在调用底层 `netsh` 命令配置网络参数（如静态 IP、子网掩码、网关与 DNS）时，若接口名包含空格或特殊字符，直接拼装可能发生参数错位；且在某些 Windows 语言版本中，`netsh` 失败时会将错误文本打印到 `stdout` 而非 `stderr`，导致错误诊断丢失。
+- **修复方案**：
+  - 重构底层参数构造逻辑，为带有空格的接口名称安全包裹引号，并通过单元测试覆盖各种命名组合；
+  - 引入 `format_process_error` 函数：当命令执行失败但 `stderr` 为空时，自动提取并回退使用 `stdout` 作为错误诊断内容。
+- **验证**：Rust 单元测试 `test_format_netsh_params` 与 `test_format_process_error_fallback` 断言通过。
+
+### 2.7 管理员特权前置检查 (Admin Privilege Pre-flight)
+- **问题背景**：用户在普通非管理员权限下启动应用并尝试修改网络配置时，由于底层命令逐条被系统拒绝，会产生冗长且不必要的逆向补偿尝试与混淆性报错。
+- **修复方案**：
+  - 增加 Windows 访问令牌检测函数 `is_elevated()`，通过 `CheckTokenMembership` 检测是否具备管理员凭据。
+  - 在执行网络写操作前进行前置断言，若未提权则直接在前端拦截并弹出明确的权限不足提示：“修改网络配置需要管理员权限，请右键程序选择‘以管理员身份运行’”。
+- **验证**：Rust 单元测试 `test_is_elevated_check` 断言通过，实机普通权限拦截生效。
+
+### 2.8 Windows 本地化环境下 DoH 异常安全捕获
+- **问题背景**：在部分非英文/中文特定本地化版本的 Windows 11 / Server 2022 系统中，查询 `MSFT_DNSClientDohServerAddress` 抛出的对象缺失异常可能包含系统语言特定的错误文本，若仅匹配英文可能无法平滑识别系统尚无 DoH 配置条目，进而误报应用失败。
+- **修复方案**：
+  - 拓展 PowerShell 异常模式匹配，涵盖标准 CIM 错误号与本地化异常文本，确保在 DoH 条目不存在时均能被安全识别并初始化为空映射，不阻断正常网络配置。
+- **验证**：生产环境真实 Windows 多语言 CIM 脚本执行验证通过。
+
 ---
 
 ## 3. 发布物完整性记录
 
-最新一轮全量打包产物指纹如下（已同步记录至 `releases/SHA256SUMS.txt`）：
+最新一轮全量打包产物指纹如下（已同步记录至 `releases/SHA256SUMS.txt` 与 `releases/release-manifest.json`）：
 
 | 产物名称 | 大小 (Bytes) | SHA-256 哈希值 |
 |---|---|---|
-| `Windows网络配置工具.exe` | 2,084,352 | `c2933a7604ed0941976b851732e80d1172606ee2a278165f6dd7761354719335` |
-| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,084,352 | `c2933a7604ed0941976b851732e80d1172606ee2a278165f6dd7761354719335` |
-| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,462,272 | `e78485de62872d00debdd52fe235c7333ccaa36df6a6cfa66f116577523c6740` |
-| `Windows网络配置工具_0.1.0_x64-setup.exe` | 949,727 | `36354312de03ab351c842f614cdc3a31a11e254897a18f246d4d814abb7d1cb6` |
+| `Windows网络配置工具.exe` | 2,085,888 | `2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d` |
+| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,085,888 | `2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d` |
+| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,462,272 | `4b871913ee7c94207b4b3fd94c2ee6d0cd687ca045fa8f73fc1e58787249ca38` |
+| `Windows网络配置工具_0.1.0_x64-setup.exe` | 951,227 | `faef37a4368560a10aa14a0c3e0167f24f39467c5eabc06a0ac819bef323e88f` |
 
 > [!NOTE]
 > 当前发布产物未配置商业 Authenticode 代码签名证书。SHA-256 校验和用于完整性核验，不代表发布者机构身份认证。

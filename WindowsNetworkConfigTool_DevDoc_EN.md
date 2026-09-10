@@ -97,7 +97,14 @@ This is command-by-command compensation, not an atomic OS transaction or a guara
 
 ## 5. Processes, permissions and state
 
-PowerShell receives JSON through stdin and uses fixed scripts; netsh receives separate arguments. Resolve executables from trusted system directories. The runner applies CREATE_NO_WINDOW, timeouts and Windows Job Object management. Snapshot CIM queries (`Get-NetIPInterface`, `Get-DnsClientServerAddress`) employ `-ErrorAction Stop` and regex fallback matching against absent interface instances (e.g. disabled IPv6 stacks) to ensure robust enumeration. Job creation/assignment failures and termination confirmation still require work. A Global mutex timeout does not fall back to Local, while the access-denied fallback remains an isolation limitation.
+PowerShell receives JSON through stdin and uses fixed scripts; netsh receives separate arguments. Resolve executables from trusted system directories. The runner applies CREATE_NO_WINDOW, timeouts and Windows Job Object management.
+
+Hardening and error resilience mechanisms:
+1. **Netsh parameter quoting and error fallback**: Netsh arguments are isolated as an array, with adapter names safely quoted. In certain Windows locale editions, netsh writes failure messages to stdout instead of stderr; `format_process_error` automatically falls back to stdout if stderr is empty, preventing lost error context.
+2. **Admin privilege pre-flight check (`is_elevated`)**: Before attempting system writes, the application validates Windows Access Token administrator credentials via Windows APIs. Running without elevation immediately returns a clear, user-friendly prompt without triggering a cascade of command rejections and rollbacks.
+3. **Multilingual CIM query fault tolerance**: Snapshot and DoH queries (`Get-NetIPInterface`, `Get-DnsClientServerAddress`, `Get-DnsClientDohServerAddress`) employ `-ErrorAction Stop` and multilingual regex patterns to gracefully catch absent interface or DoH mapping exceptions without interrupting regular adapter enumeration.
+
+Job creation/assignment failures and termination confirmation still require work. A Global mutex timeout does not fall back to Local, while the access-denied fallback remains an isolation limitation.
 
 There is no on-demand elevated helper or requireAdministrator application manifest. Users must run the application as administrator to write network settings. An installer's UAC request does not establish that the application elevates automatically.
 
@@ -114,7 +121,8 @@ npm run test:regression
 npm run release
 ```
 
-Regression probes execute current production transaction logic, actual Vue composables and extracted PowerShell scripts with controlled IO. Results go to the ignored tests/regression/ipv6/output directory; any failed probe/assertion exits nonzero. Keep extraction boundaries synchronized when production functions move.
+- **Unit tests (17 passed)**: Covers IPv4/IPv6 validation, continuous subnet mask calculation, subnet gateway assertions, DNS/DoH combinations, snapshot restoration verification, cross-process named mutex timeout, silent child process execution, netsh argument formatting, process error fallback, and administrator privilege detection.
+- **Regression tests (12 passed)**: Regression probes execute current production transaction logic, actual Vue composables and extracted PowerShell scripts with controlled IO. Results go to the ignored tests/regression/ipv6/output directory; any failed probe/assertion exits nonzero. Keep extraction boundaries synchronized when production functions move.
 
 The release script builds frontend resources, the executable, MSI and NSIS, verifies artifact freshness, then exports artifacts and hashes. See the [packaging guide](./打包说明.md). The current release is unsigned, x64, with a WebView2 download-bootstrapper installer policy. Native UI, real network changes, UAC and installation/uninstallation still require acceptance testing.
 

@@ -108,7 +108,12 @@ OperationResult 的含义：
 
 ## 5. 系统执行与权限
 
-PowerShell 使用固定脚本，通过 stdin JSON 传入数据；netsh 使用独立参数数组。系统工具由可信系统目录定位，不能将用户输入拼进脚本。子进程配置 CREATE_NO_WINDOW；release 主程序使用 GUI 子系统。快照采集中的 CIM 查询（`Get-NetIPInterface`、`Get-DnsClientServerAddress`）统一配置 `-ErrorAction Stop` 并匹配空对象异常（如针对禁用 IPv6 网卡），实现底层容错。
+PowerShell 使用固定脚本，通过 stdin JSON 传入数据；netsh 使用独立参数数组传递。系统工具由可信系统目录定位，不能将用户输入拼进脚本。子进程配置 CREATE_NO_WINDOW；release 主程序使用 GUI 子系统。
+
+针对底层调用的加固与容错机制：
+1. **Netsh 参数引用安全与错误回退**：底层 netsh 参数独立分词，对含空格的网卡名称做安全转义；同时针对部分 Windows 语言环境下 netsh 失败信息输出至标准输出的现象，`format_process_error` 在 stderr 为空时自动回退读取 stdout，防止错误诊断信息丢失。
+2. **管理员权限前置检查 (`is_elevated`)**：写操作前主动校验 Windows Access Token 管理员安全组凭据。若在普通用户权限下运行，直接返回明确的提权指引，避免逐条命令失败触发不必要且冗长的逆向补偿。
+3. **CIM 查询多语言容错**：快照采集与 DoH 配置中的 CIM 查询（`Get-NetIPInterface`、`Get-DnsClientServerAddress`、`Get-DnsClientDohServerAddress`）统一配置 `-ErrorAction Stop` 并结合正则捕获多语言空对象异常，保证在未绑定 IPv6 或系统无 DoH 映射时平滑回退，不阻断常规网卡信息读取。
 
 执行器设置超时并使用 Windows Job Object 管理子进程，但 Job 创建/绑定失败及终止确认仍有待完善的路径。命名互斥体在 Global 等待超时后不会改取 Local；权限拒绝回退 Local 的跨权限隔离仍未完成验证。
 
@@ -131,7 +136,8 @@ npm run test:regression
 npm run release
 ```
 
-回归命令测试当前源码，临时 Rust 工程仅替换系统 IO，Vue 使用实际 composable。测试输出进入被忽略的 tests/regression/ipv6/output；任何探针失败会让命令非零退出。修改生产函数边界时必须同步提取探针并验证它仍运行生产逻辑。
+- **单元测试 (17 项)**：涵盖 IPv4/IPv6 格式校验、子网连续掩码换算、网关同网段断言、DNS/DoH 组合校验、快照读回校验、跨进程互斥锁超时、子进程静默执行、Netsh 参数格式化、进程错误输出回退以及管理员特权检查。
+- **回归测试 (12 项)**：测试当前源码，临时 Rust 工程仅替换系统 IO，Vue 使用实际 composable。测试输出进入被忽略的 tests/regression/ipv6/output；任何探针失败会让命令非零退出。修改生产函数边界时必须同步提取探针并验证它仍运行生产逻辑。
 
 构建命令生成 EXE、MSI 和 NSIS，并将本轮文件导出到 releases。scripts/export-release.ps1 在复制前检查完整产物集合及构建时间，生成源码指纹和 SHA-256。详见 [打包说明](./打包说明.md)。
 
