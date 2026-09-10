@@ -21,6 +21,7 @@ const {
   selectedAdapter,
   ipConfig,
   isLoading,
+  isAdmin,
   statusMsg,
   statusType,
   currentSnapshot,
@@ -163,6 +164,15 @@ onMounted(() => {
         <p class="subtitle">安全可靠的原生适配器配置，支持 IPv4 / IPv6 与 DNS over HTTPS (DoH)</p>
       </div>
     </header>
+
+    <!-- 管理员特权未就绪警告横幅 -->
+    <div v-if="!isAdmin" class="admin-warning-banner" role="alert">
+      <span class="admin-warning-icon">🛡️</span>
+      <div class="admin-warning-content">
+        <strong class="admin-warning-title">未检测到管理员运行权限</strong>
+        <p class="admin-warning-text">Windows 系统的 IP、DNS 与 DoH 修改需要管理员特权。当前操作可能会被系统拦截，请退出程序，右键快捷方式并选择【以管理员身份运行】。</p>
+      </div>
+    </div>
 
     <div class="content-grid">
       <!-- 左侧：适配器与配置表单 -->
@@ -850,6 +860,52 @@ h1 {
   font-size: 0.875rem;
   color: #64748b;
   margin: 0;
+}
+
+/* 管理员权限警告横幅 */
+.admin-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.5rem;
+  color: #92400e;
+  animation: adminBannerFadeIn 0.3s ease;
+}
+
+.admin-warning-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.admin-warning-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-warning-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.admin-warning-text {
+  font-size: 0.825rem;
+  line-height: 1.45;
+  margin: 0;
+  color: #78350f;
+}
+
+@keyframes adminBannerFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* 双栏响应式布局 */

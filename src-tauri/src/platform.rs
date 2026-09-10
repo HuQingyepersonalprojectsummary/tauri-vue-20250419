@@ -69,6 +69,77 @@ pub fn get_system_binary(binary_name: &str) -> PathBuf {
     }
 }
 
+/// 检查当前进程是否拥有 Windows 管理员权限 (Elevated)
+#[cfg(windows)]
+pub fn is_current_process_elevated() -> bool {
+    extern "system" {
+        fn GetCurrentProcess() -> *mut std::ffi::c_void;
+        fn OpenProcessToken(
+            ProcessHandle: *mut std::ffi::c_void,
+            DesiredAccess: u32,
+            TokenHandle: *mut *mut std::ffi::c_void,
+        ) -> i32;
+        fn GetTokenInformation(
+            TokenHandle: *mut std::ffi::c_void,
+            TokenInformationClass: u32,
+            TokenInformation: *mut std::ffi::c_void,
+            TokenInformationLength: u32,
+            ReturnLength: *mut u32,
+        ) -> i32;
+        fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+    }
+
+    const TOKEN_QUERY: u32 = 0x0008;
+    const TOKEN_ELEVATION: u32 = 20;
+
+    #[repr(C)]
+    struct TokenElevation {
+        token_is_elevated: u32,
+    }
+
+    unsafe {
+        let mut token: *mut std::ffi::c_void = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+
+        let mut elevation = TokenElevation {
+            token_is_elevated: 0,
+        };
+        let mut ret_len = 0u32;
+        let res = GetTokenInformation(
+            token,
+            TOKEN_ELEVATION,
+            &mut elevation as *mut _ as *mut std::ffi::c_void,
+            std::mem::size_of::<TokenElevation>() as u32,
+            &mut ret_len,
+        );
+        CloseHandle(token);
+
+        res != 0 && elevation.token_is_elevated != 0
+    }
+}
+
+#[cfg(not(windows))]
+pub fn is_current_process_elevated() -> bool {
+    true
+}
+
+/// 提取子进程执行失败时的详细错误说明（优先提取 stderr，若 stderr 为空则回退至 stdout，防止 netsh 错误信息丢失）
+pub(crate) fn format_process_error(out: &ProcessOutput) -> &str {
+    let err = out.stderr.trim();
+    if !err.is_empty() {
+        err
+    } else {
+        let out_str = out.stdout.trim();
+        if !out_str.is_empty() {
+            out_str
+        } else {
+            "未知错误(命令无任何输出)"
+        }
+    }
+}
+
 /// 解码 Windows 控制台输出（先试 UTF-8，再回退 GBK，防止中文系统乱码）
 fn decode_output_bytes(bytes: &[u8]) -> String {
     if let Ok(s) = std::str::from_utf8(bytes) {
@@ -1188,8 +1259,8 @@ pub fn rollback_snapshot_internal(
     touched_ipv6_addresses: &[String],
 ) -> Result<(), String> {
     let netsh = get_system_binary("netsh.exe");
-    let target_name_param = format!("name=\"{}\"", target);
-    let target_interface_param = format!("interface=\"{}\"", target);
+    let target_name_param = format!("name={}", target);
+    let target_interface_param = format!("interface={}", target);
     let mut errors = Vec::new();
 
     // 1. 恢复 IP 与网关
@@ -1209,7 +1280,7 @@ pub fn rollback_snapshot_internal(
         );
         match res_ip {
             Ok(out) if !out.success => {
-                errors.push(format!("回滚IP至DHCP失败: {}", out.stderr.trim()))
+                errors.push(format!("回滚IP至DHCP失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行回滚IP至DHCP异常: {}", e)),
             _ => {}
@@ -1232,7 +1303,7 @@ pub fn rollback_snapshot_internal(
         let res_ip = run_command_with_timeout(&netsh, &ip_args, None, Duration::from_secs(15));
         match res_ip {
             Ok(out) if !out.success => {
-                errors.push(format!("回滚静态IP失败: {}", out.stderr.trim()))
+                errors.push(format!("回滚静态IP失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行回滚静态IP异常: {}", e)),
             _ => {}
@@ -1256,7 +1327,7 @@ pub fn rollback_snapshot_internal(
                     Ok(out) if !out.success => errors.push(format!(
                         "恢复辅助IP ({}) 失败: {}",
                         secondary.ip_address,
-                        out.stderr.trim()
+                        format_process_error(&out)
                     )),
                     Err(e) => errors.push(format!(
                         "执行恢复辅助IP ({}) 异常: {}",
@@ -1286,7 +1357,7 @@ pub fn rollback_snapshot_internal(
                     Ok(out) if !out.success => errors.push(format!(
                         "恢复辅助网关 ({}) 失败: {}",
                         sec_gw,
-                        out.stderr.trim()
+                        format_process_error(&out)
                     )),
                     Err(e) => errors.push(format!("执行恢复辅助网关 ({}) 异常: {}", sec_gw, e)),
                     _ => {}
@@ -1310,7 +1381,7 @@ pub fn rollback_snapshot_internal(
         );
         match res_clean_ip {
             Ok(out) if !out.success => {
-                errors.push(format!("清除静态IP并重设为DHCP失败: {}", out.stderr.trim()))
+                errors.push(format!("清除静态IP并重设为DHCP失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行清除静态IP并重设为DHCP异常: {}", e)),
             _ => {}
@@ -1334,7 +1405,7 @@ pub fn rollback_snapshot_internal(
         );
         match res_dns {
             Ok(out) if !out.success => {
-                errors.push(format!("回滚DNS至DHCP失败: {}", out.stderr.trim()))
+                errors.push(format!("回滚DNS至DHCP失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行回滚DNS至DHCP异常: {}", e)),
             _ => {}
@@ -1356,7 +1427,7 @@ pub fn rollback_snapshot_internal(
         );
         match res_d1 {
             Ok(out) if !out.success => {
-                errors.push(format!("恢复首选DNS失败: {}", out.stderr.trim()))
+                errors.push(format!("恢复首选DNS失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行恢复首选DNS异常: {}", e)),
             _ => {}
@@ -1382,7 +1453,7 @@ pub fn rollback_snapshot_internal(
                 Ok(out) if !out.success => errors.push(format!(
                     "恢复辅助DNS ({}) 失败: {}",
                     d_extra,
-                    out.stderr.trim()
+                    format_process_error(&out)
                 )),
                 Err(e) => errors.push(format!("执行恢复辅助DNS ({}) 异常: {}", d_extra, e)),
                 _ => {}
@@ -1405,7 +1476,7 @@ pub fn rollback_snapshot_internal(
         );
         match res_clean_dns {
             Ok(out) if !out.success => {
-                errors.push(format!("重设空DNS为DHCP失败: {}", out.stderr.trim()))
+                errors.push(format!("重设空DNS为DHCP失败: {}", format_process_error(&out)))
             }
             Err(e) => errors.push(format!("执行重设空DNS为DHCP异常: {}", e)),
             _ => {}
@@ -1526,7 +1597,7 @@ pub fn rollback_snapshot_internal(
             );
             match res_v6_dhcp {
                 Ok(out) if !out.success => {
-                    errors.push(format!("恢复 IPv6 自动获取失败: {}", out.stderr.trim()))
+                    errors.push(format!("恢复 IPv6 自动获取失败: {}", format_process_error(&out)))
                 }
                 Err(e) => errors.push(format!("执行恢复 IPv6 自动获取异常: {}", e)),
                 _ => {}
@@ -1556,7 +1627,7 @@ pub fn rollback_snapshot_internal(
                     Ok(out) if !out.success => errors.push(format!(
                         "恢复原手动 IPv6 地址 {} 失败: {}",
                         address,
-                        out.stderr.trim()
+                        format_process_error(&out)
                     )),
                     Err(e) => errors.push(format!("恢复原手动 IPv6 地址 {} 异常: {}", address, e)),
                     _ => {}
@@ -1581,7 +1652,7 @@ pub fn rollback_snapshot_internal(
             );
             match res_mode {
                 Ok(out) if !out.success => {
-                    errors.push(format!("恢复 IPv6 静态接口模式失败: {}", out.stderr.trim()))
+                    errors.push(format!("恢复 IPv6 静态接口模式失败: {}", format_process_error(&out)))
                 }
                 Err(e) => errors.push(format!("执行恢复 IPv6 静态接口模式异常: {}", e)),
                 _ => {}
@@ -1606,7 +1677,7 @@ pub fn rollback_snapshot_internal(
                     Ok(out) if !out.success => errors.push(format!(
                         "恢复静态 IPv6 地址 ({}) 失败: {}",
                         v6_prefix_str,
-                        out.stderr.trim()
+                        format_process_error(&out)
                     )),
                     Err(e) => errors.push(format!(
                         "执行恢复静态 IPv6 地址 ({}) 异常: {}",
@@ -1631,7 +1702,7 @@ pub fn rollback_snapshot_internal(
             );
             match res_del_gw {
                 Ok(out) if !out.success && !is_not_found_output(&out) => {
-                    errors.push(format!("回滚清理 IPv6 路由失败: {}", out.stderr.trim()));
+                    errors.push(format!("回滚清理 IPv6 路由失败: {}", format_process_error(&out)));
                 }
                 Err(e) => errors.push(format!("执行回滚清理 IPv6 路由异常: {}", e)),
                 _ => {}
@@ -1655,7 +1726,7 @@ pub fn rollback_snapshot_internal(
                     Ok(out) if !out.success => errors.push(format!(
                         "恢复 IPv6 默认网关 ({}) 失败: {}",
                         gw,
-                        out.stderr.trim()
+                        format_process_error(&out)
                     )),
                     Err(e) => errors.push(format!("执行恢复 IPv6 默认网关 ({}) 异常: {}", gw, e)),
                     _ => {}
@@ -1681,7 +1752,7 @@ pub fn rollback_snapshot_internal(
             match res_dns_dhcp {
                 Ok(out) if !out.success => errors.push(format!(
                     "恢复 IPv6 DNS 为自动获取失败: {}",
-                    out.stderr.trim()
+                    format_process_error(&out)
                 )),
                 Err(e) => errors.push(format!("执行恢复 IPv6 DNS 为自动获取异常: {}", e)),
                 _ => {}
@@ -1704,7 +1775,7 @@ pub fn rollback_snapshot_internal(
             );
             match res_dns1 {
                 Ok(out) if !out.success => {
-                    errors.push(format!("恢复首选 IPv6 DNS 失败: {}", out.stderr.trim()))
+                    errors.push(format!("恢复首选 IPv6 DNS 失败: {}", format_process_error(&out)))
                 }
                 Err(e) => errors.push(format!("执行恢复首选 IPv6 DNS 异常: {}", e)),
                 _ => {}
@@ -1727,7 +1798,7 @@ pub fn rollback_snapshot_internal(
                 );
                 match res_dns2 {
                     Ok(out) if !out.success => {
-                        errors.push(format!("恢复备用 IPv6 DNS 失败: {}", out.stderr.trim()))
+                        errors.push(format!("恢复备用 IPv6 DNS 失败: {}", format_process_error(&out)))
                     }
                     Err(e) => errors.push(format!("执行恢复备用 IPv6 DNS 异常: {}", e)),
                     _ => {}
@@ -1890,8 +1961,8 @@ pub fn apply_adapter_ipv4_config_transactional(
     }
 
     let netsh = get_system_binary("netsh.exe");
-    let name_param = format!("name=\"{}\"", cfg.adapter);
-    let interface_param = format!("interface=\"{}\"", cfg.adapter);
+    let name_param = format!("name={}", cfg.adapter);
+    let interface_param = format!("interface={}", cfg.adapter);
 
     // 日志只在命令执行前登记，结合 before_snapshot 保存的前缀和来源恢复。
     // RefCell 允许失败处理闭包读取日志，同时在每个可能部分生效的命令前追加。
@@ -1982,9 +2053,8 @@ pub fn apply_adapter_ipv4_config_transactional(
         if !ip_success {
             let err_detail = match ip_out {
                 Ok(out) => format!(
-                    "设置 IP 地址失败: {}\n输出: {}",
-                    out.stderr.trim(),
-                    out.stdout.trim()
+                    "设置 IP 地址失败: {}",
+                    format_process_error(&out)
                 ),
                 Err(e) => format!("执行设置 IP 地址命令异常: {}", e),
             };
@@ -2004,7 +2074,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             run_command_with_timeout(&netsh, &set_dhcp_args, None, Duration::from_secs(15));
         if !matches!(&dhcp_out, Ok(out) if out.success) {
             let err_detail = match dhcp_out {
-                Ok(out) => format!("切换 IP 为 DHCP 失败: {}", out.stderr.trim()),
+                Ok(out) => format!("切换 IP 为 DHCP 失败: {}", format_process_error(&out)),
                 Err(e) => format!("执行切换 IP 为 DHCP 命令异常: {}", e),
             };
             return Ok(verify_and_build_rollback_result(err_detail));
@@ -2035,13 +2105,13 @@ pub fn apply_adapter_ipv4_config_transactional(
                             Ok(out2) if out2.success => {}
                             Ok(out2) => {
                                 dns_failure =
-                                    Some(format!("设置辅助 DNS 失败: {}", out2.stderr.trim()))
+                                    Some(format!("设置辅助 DNS 失败: {}", format_process_error(&out2)))
                             }
                             Err(e) => dns_failure = Some(format!("执行设置辅助 DNS 异常: {}", e)),
                         }
                     }
                 }
-                Ok(out) => dns_failure = Some(format!("设置首选 DNS 失败: {}", out.stderr.trim())),
+                Ok(out) => dns_failure = Some(format!("设置首选 DNS 失败: {}", format_process_error(&out))),
                 Err(e) => dns_failure = Some(format!("执行设置首选 DNS 异常: {}", e)),
             }
         }
@@ -2053,7 +2123,11 @@ pub fn apply_adapter_ipv4_config_transactional(
             Duration::from_secs(15),
         );
         if !matches!(&set_dns_dhcp, Ok(out) if out.success) {
-            dns_failure = Some("切换 DNS 为 DHCP 失败".to_string());
+            let err = match set_dns_dhcp {
+                Ok(out) => format!("切换 DNS 为 DHCP 失败: {}", format_process_error(&out)),
+                Err(e) => format!("执行切换 DNS 为 DHCP 异常: {}", e),
+            };
+            dns_failure = Some(err);
         }
     }
 
@@ -2118,7 +2192,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             );
             if !matches!(&set_mode_res, Ok(out) if out.success) {
                 let err = match set_mode_res {
-                    Ok(out) => format!("设置 IPv6 接口静态模式失败: {}", out.stderr.trim()),
+                    Ok(out) => format!("设置 IPv6 接口静态模式失败: {}", format_process_error(&out)),
                     Err(e) => format!("执行设置 IPv6 接口静态模式异常: {}", e),
                 };
                 return Ok(verify_and_build_rollback_result(err));
@@ -2146,7 +2220,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                         let err = format!(
                             "删除旧 IPv6 地址 ({}) 失败: {}",
                             old_ip.ip_address,
-                            out.stderr.trim()
+                            format_process_error(&out)
                         );
                         return Ok(verify_and_build_rollback_result(err));
                     }
@@ -2174,7 +2248,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             );
             if !matches!(&add_v6_res, Ok(out) if out.success) {
                 let err = match add_v6_res {
-                    Ok(out) => format!("设置静态 IPv6 地址失败: {}", out.stderr.trim()),
+                    Ok(out) => format!("设置静态 IPv6 地址失败: {}", format_process_error(&out)),
                     Err(e) => format!("执行设置静态 IPv6 地址异常: {}", e),
                 };
                 return Ok(verify_and_build_rollback_result(err));
@@ -2197,7 +2271,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                 );
                 match del_gw_res {
                     Ok(out) if !out.success && !is_not_found_output(&out) => {
-                        let err = format!("删除旧 IPv6 默认路由失败: {}", out.stderr.trim());
+                        let err = format!("删除旧 IPv6 默认路由失败: {}", format_process_error(&out));
                         return Ok(verify_and_build_rollback_result(err));
                     }
                     Err(e) => {
@@ -2222,7 +2296,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                 );
                 if !matches!(&add_gw_res, Ok(out) if out.success) {
                     let err = match add_gw_res {
-                        Ok(out) => format!("设置 IPv6 默认网关失败: {}", out.stderr.trim()),
+                        Ok(out) => format!("设置 IPv6 默认网关失败: {}", format_process_error(&out)),
                         Err(e) => format!("执行设置 IPv6 默认网关异常: {}", e),
                     };
                     return Ok(verify_and_build_rollback_result(err));
@@ -2249,7 +2323,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                         let err = format!(
                             "删除原静态 IPv6 地址 ({}) 失败: {}",
                             old_ip.ip_address,
-                            out.stderr.trim()
+                            format_process_error(&out)
                         );
                         return Ok(verify_and_build_rollback_result(err));
                     }
@@ -2279,7 +2353,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             );
             match del_route_res {
                 Ok(out) if !out.success && !is_not_found_output(&out) => {
-                    let err = format!("清理残留 IPv6 静态默认路由失败: {}", out.stderr.trim());
+                    let err = format!("清理残留 IPv6 静态默认路由失败: {}", format_process_error(&out));
                     return Ok(verify_and_build_rollback_result(err));
                 }
                 Err(e) => {
@@ -2304,7 +2378,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             );
             if !matches!(&set_v6_dhcp, Ok(out) if out.success) {
                 let err = match set_v6_dhcp {
-                    Ok(out) => format!("切换 IPv6 为自动获取失败: {}", out.stderr.trim()),
+                    Ok(out) => format!("切换 IPv6 为自动获取失败: {}", format_process_error(&out)),
                     Err(e) => format!("执行切换 IPv6 为自动获取异常: {}", e),
                 };
                 return Ok(verify_and_build_rollback_result(err));
@@ -2334,7 +2408,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                 );
                 if !matches!(&set_v6_dns, Ok(out) if out.success) {
                     let err = match set_v6_dns {
-                        Ok(out) => format!("设置首选 IPv6 DNS 失败: {}", out.stderr.trim()),
+                        Ok(out) => format!("设置首选 IPv6 DNS 失败: {}", format_process_error(&out)),
                         Err(e) => format!("执行设置首选 IPv6 DNS 异常: {}", e),
                     };
                     return Ok(verify_and_build_rollback_result(err));
@@ -2360,7 +2434,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                     );
                     if !matches!(&add_v6_dns, Ok(out) if out.success) {
                         let err = match add_v6_dns {
-                            Ok(out) => format!("设置备用 IPv6 DNS 失败: {}", out.stderr.trim()),
+                            Ok(out) => format!("设置备用 IPv6 DNS 失败: {}", format_process_error(&out)),
                             Err(e) => format!("执行设置备用 IPv6 DNS 异常: {}", e),
                         };
                         return Ok(verify_and_build_rollback_result(err));
@@ -2383,7 +2457,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             );
             if !matches!(&set_v6_dns_dhcp, Ok(out) if out.success) {
                 let err = match set_v6_dns_dhcp {
-                    Ok(out) => format!("切换 IPv6 DNS 为自动获取失败: {}", out.stderr.trim()),
+                    Ok(out) => format!("切换 IPv6 DNS 为自动获取失败: {}", format_process_error(&out)),
                     Err(e) => format!("执行切换 IPv6 DNS 为自动获取异常: {}", e),
                 };
                 return Ok(verify_and_build_rollback_result(err));

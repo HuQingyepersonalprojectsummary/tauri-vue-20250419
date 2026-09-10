@@ -153,18 +153,33 @@ pub mod commands {
             .map_err(|e| format!("调度获取当前配置任务失败: {}", e))?
     }
 
+    /// 检查当前进程是否以管理员权限运行
+    #[tauri::command]
+    pub fn check_admin_privilege() -> bool {
+        platform::is_current_process_elevated()
+    }
+
     /// 事务式应用网络配置 (含 IPv4 / IPv6 / DNS / DoH) (A-01, A-03, A-06, R-08, F-07)
     ///
     /// 执行流程：
-    /// 1. 获取进程内异步写锁 (NetworkLock)；
-    /// 2. 获取 Windows 系统级跨进程具名互斥体 (5000ms 超时防死锁)；
-    /// 3. 进入事务引擎：前置全息快照 -> 网络语义复验 -> 分步执行 -> 读回深度比对校验；
-    /// 4. 若任何环节失败或读回不一致，自动触发安全回滚，还原修改前快照。
+    /// 1. 预检当前进程管理员权限，非特权运行直接拒绝；
+    /// 2. 获取进程内异步写锁 (NetworkLock)；
+    /// 3. 获取 Windows 系统级跨进程具名互斥体 (5000ms 超时防死锁)；
+    /// 4. 进入事务引擎：前置全息快照 -> 网络语义复验 -> 分步执行 -> 读回深度比对校验；
+    /// 5. 若任何环节失败或读回不一致，自动触发安全回滚，还原修改前快照。
     #[tauri::command]
     pub async fn apply_adapter_ipv4_config(
         cfg: Ipv4Config,
         lock: State<'_, NetworkLock>,
     ) -> Result<OperationResult, String> {
+        #[cfg(windows)]
+        if !platform::is_current_process_elevated() {
+            return Err(
+                "权限不足：修改网络配置与 DNS/DoH 需要管理员权限。请退出程序，右键点击应用图标并选择【以管理员身份运行】后再试。"
+                    .to_string(),
+            );
+        }
+
         let _guard = lock.0.lock().await;
         tauri::async_runtime::spawn_blocking(move || {
             #[cfg(windows)]
@@ -188,7 +203,8 @@ pub fn run() {
             commands::greet,
             commands::get_network_adapters,
             commands::apply_adapter_ipv4_config,
-            commands::get_current_config
+            commands::get_current_config,
+            commands::check_admin_privilege
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -254,5 +270,50 @@ mod tests {
         .expect("后台无窗口命令必须成功执行");
         assert!(out.success);
         assert_eq!(out.stdout.trim(), "silent_background_ok");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_is_elevated_check() {
+        let _ = super::platform::is_current_process_elevated();
+    }
+
+    #[test]
+    fn test_format_netsh_params() {
+        let adapter_with_space = "以太网 2";
+        let name_param = format!("name={}", adapter_with_space);
+        assert_eq!(name_param, "name=以太网 2");
+        assert!(!name_param.contains('\"'));
+    }
+
+    #[test]
+    fn test_format_process_error_fallback() {
+        use super::platform::ProcessOutput;
+        let out_both = ProcessOutput {
+            success: false,
+            stdout: "stdout msg".to_string(),
+            stderr: "stderr msg".to_string(),
+        };
+        assert_eq!(super::platform::format_process_error(&out_both), "stderr msg");
+
+        let out_stdout_only = ProcessOutput {
+            success: false,
+            stdout: "netsh stdout error".to_string(),
+            stderr: "".to_string(),
+        };
+        assert_eq!(
+            super::platform::format_process_error(&out_stdout_only),
+            "netsh stdout error"
+        );
+
+        let out_empty = ProcessOutput {
+            success: false,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+        };
+        assert_eq!(
+            super::platform::format_process_error(&out_empty),
+            "未知错误(命令无任何输出)"
+        );
     }
 }

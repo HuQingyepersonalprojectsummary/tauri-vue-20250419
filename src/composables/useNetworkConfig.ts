@@ -34,6 +34,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   const statusType = ref<'info' | 'success' | 'warning' | 'error'>('info');
   /** 当前选中网卡的底层全息实时快照 (反映最新生效的系统真实网络配置) */
   const currentSnapshot = ref<AdapterSnapshot | null>(null);
+  /** 当前进程是否拥有 Windows 管理员特权 */
+  const isAdmin = ref(true);
 
   /** 当前表单绑定的网络配置响应式对象 */
   const ipConfig = reactive<Ipv4Config>({
@@ -109,6 +111,26 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   }
 
   /**
+   * 检查当前应用进程是否具有管理员特权
+   * 
+   * 若底层环境不支持或调用异常（如测试或 Mock 环境），默认保持为 true，
+   * 实际权限最终由后端执行阶段严格把关。
+   */
+  async function checkAdmin(): Promise<boolean> {
+    try {
+      if (typeof networkClient.checkAdminPrivilege === 'function') {
+        const elevated = await networkClient.checkAdminPrivilege();
+        isAdmin.value = elevated;
+        return elevated;
+      }
+    } catch {
+      // 容错处理
+    }
+    isAdmin.value = true;
+    return true;
+  }
+
+  /**
    * 加载并枚举系统中的所有网络适配器
    * 
    * 成功获取列表后，若当前未选中任何网卡或原网卡已脱机，自动默认选中首个有效适配器。
@@ -117,6 +139,9 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     isLoading.value = true;
     statusMsg.value = '正在获取网络适配器列表...';
     statusType.value = 'info';
+
+    // 检查管理员权限状态
+    await checkAdmin();
 
     try {
       const list = await networkClient.getNetworkAdapters();
@@ -434,6 +459,21 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       }
     }
 
+    // 前置管理员权限检查：若已明确非管理员权限，立即阻断并给予告警提示
+    if (typeof networkClient.checkAdminPrivilege === 'function') {
+      try {
+        const elevated = await networkClient.checkAdminPrivilege();
+        isAdmin.value = elevated;
+        if (!elevated) {
+          statusMsg.value = '权限不足：修改网络配置与 DNS/DoH 需要管理员权限。请退出程序，右键点击应用图标并选择【以管理员身份运行】后再试。';
+          statusType.value = 'error';
+          return;
+        }
+      } catch {
+        // 若检查抛错，交由后端处理
+      }
+    }
+
     isLoading.value = true;
     statusMsg.value = '正在应用网络配置并进行读回校验...';
     statusType.value = 'info';
@@ -602,6 +642,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     selectedAdapter,
     ipConfig,
     isLoading,
+    isAdmin,
+    checkAdmin,
     statusMsg,
     statusType,
     currentSnapshot,

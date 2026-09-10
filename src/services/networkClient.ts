@@ -52,4 +52,15 @@ export const networkClient = {
       cfg,
     });
   },
+
+  /**
+   * 检查当前应用进程是否以 Windows 管理员权限运行
+   * 
+   * 调用后端 `check_admin_privilege` 命令。修改网络适配器配置、DNS 及 DoH 需要管理员权限。
+   * 
+   * @returns Promise<boolean> 是否拥有管理员权限
+   */
+  async checkAdminPrivilege(): Promise<boolean> {
+    return await invoke<boolean>('check_admin_privilege');
+  },
 };
