@@ -220,27 +220,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
 
     if (newAdapter) {
       if (adapterDrafts.has(newAdapter)) {
-        const draft = adapterDrafts.get(newAdapter)!;
-        ipConfig.adapter = newAdapter;
-        ipConfig.ip = draft.ip;
-        ipConfig.mask = draft.mask;
-        ipConfig.gateway = draft.gateway;
-        ipConfig.dns1 = draft.dns1;
-        ipConfig.dns2 = draft.dns2;
-        ipConfig.doh1 = draft.doh1 ? { ...draft.doh1 } : undefined;
-        ipConfig.doh2 = draft.doh2 ? { ...draft.doh2 } : undefined;
-        ipConfig.ipv6Enabled = typeof draft.ipv6Enabled === 'boolean' ? draft.ipv6Enabled : undefined;
-        ipConfig.ipMode = draft.ipMode || (currentSnapshot.value?.dhcpEnabled ? 'dhcp' : 'static');
-        ipConfig.dnsMode = draft.dnsMode || (currentSnapshot.value?.dnsDhcpEnabled ? 'dhcp' : 'static');
-        ipConfig.ipv6Mode = draft.ipv6Mode || (currentSnapshot.value?.ipv6DhcpEnabled !== false ? 'dhcp' : 'static');
-        ipConfig.ipv6Ip = draft.ipv6Ip || '';
-        ipConfig.ipv6Prefix = typeof draft.ipv6Prefix === 'number' || typeof draft.ipv6Prefix === 'string' ? draft.ipv6Prefix : 64;
-        ipConfig.ipv6Gateway = draft.ipv6Gateway || '';
-        ipConfig.ipv6DnsMode = draft.ipv6DnsMode || (currentSnapshot.value?.ipv6DnsDhcpEnabled !== false ? 'dhcp' : 'static');
-        ipConfig.ipv6Dns1 = draft.ipv6Dns1 || '';
-        ipConfig.ipv6Dns2 = draft.ipv6Dns2 || '';
-
-        // 确保快照与当前网卡严格绑定，绝不残留旧网卡的快照 (A-08, R-04, F-06)
+        // 确保快照与当前网卡严格绑定，在恢复草稿前立即清空旧网卡快照，杜绝跨网卡快照污染 (A-08, R-04, F-06)
         if (currentSnapshot.value?.adapterName !== newAdapter) {
           currentSnapshot.value = null;
           const reqId = ++requestCounter;
@@ -255,6 +235,29 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
               // 静默失败，保持 null，不影响草稿编辑
             });
         }
+
+        const draft = adapterDrafts.get(newAdapter)!;
+        ipConfig.adapter = newAdapter;
+        ipConfig.ip = draft.ip;
+        ipConfig.mask = draft.mask;
+        ipConfig.gateway = draft.gateway;
+        ipConfig.dns1 = draft.dns1;
+        ipConfig.dns2 = draft.dns2;
+        ipConfig.doh1 = draft.doh1 ? { ...draft.doh1 } : undefined;
+        ipConfig.doh2 = draft.doh2 ? { ...draft.doh2 } : undefined;
+        ipConfig.ipv6Enabled = typeof draft.ipv6Enabled === 'boolean' ? draft.ipv6Enabled : undefined;
+        ipConfig.ipMode = draft.ipMode || 'static';
+        ipConfig.dnsMode = draft.dnsMode || 'static';
+        // 保持草稿中未指定/保持语义，严禁将 undefined 强制篡改为 dhcp 意图 (R6-03)
+        ipConfig.ipv6Mode = draft.ipv6Mode;
+        ipConfig.ipv6Ip = draft.ipv6Ip || '';
+        ipConfig.ipv6Prefix = typeof draft.ipv6Prefix === 'number' || typeof draft.ipv6Prefix === 'string'
+          ? draft.ipv6Prefix
+          : (draft.ipv6Mode === 'static' ? 64 : undefined);
+        ipConfig.ipv6Gateway = draft.ipv6Gateway || '';
+        ipConfig.ipv6DnsMode = draft.ipv6DnsMode;
+        ipConfig.ipv6Dns1 = draft.ipv6Dns1 || '';
+        ipConfig.ipv6Dns2 = draft.ipv6Dns2 || '';
       } else {
         // 无草稿时先立即清空表单，杜绝读取失败时跨网卡残留 (R-04)
         clearFormFields(newAdapter);
@@ -411,8 +414,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       }
 
       if (ipConfig.ipv6DnsMode === 'static') {
-        if (!ipConfig.ipv6Dns1?.trim() && ipConfig.ipv6Dns2?.trim()) {
-          statusMsg.value = '若配置备用 IPv6 DNS，必须先配置首选 IPv6 DNS (DNS1)';
+        if (!ipConfig.ipv6Dns1?.trim()) {
+          statusMsg.value = '手动 IPv6 DNS 必须填写首选 DNS (DNS1)，如不修改请选择保持现状';
           statusType.value = 'warning';
           return;
         }
@@ -538,11 +541,11 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       ipv6Enabled: typeof cfg.ipv6Enabled === 'boolean' ? cfg.ipv6Enabled : undefined,
       ipMode: cfg.ipMode || 'static',
       dnsMode: cfg.dnsMode || 'static',
-      ipv6Mode: cfg.ipv6Mode || 'dhcp',
+      ipv6Mode: cfg.ipv6Mode || undefined,
       ipv6Ip: cfg.ipv6Ip || '',
-      ipv6Prefix: typeof cfg.ipv6Prefix === 'number' || typeof cfg.ipv6Prefix === 'string' ? cfg.ipv6Prefix : 64,
+      ipv6Prefix: typeof cfg.ipv6Prefix === 'number' || typeof cfg.ipv6Prefix === 'string' ? cfg.ipv6Prefix : undefined,
       ipv6Gateway: cfg.ipv6Gateway || '',
-      ipv6DnsMode: cfg.ipv6DnsMode || 'dhcp',
+      ipv6DnsMode: cfg.ipv6DnsMode || undefined,
       ipv6Dns1: cfg.ipv6Dns1 || '',
       ipv6Dns2: cfg.ipv6Dns2 || '',
     };

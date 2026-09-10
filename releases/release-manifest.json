@@ -1,0 +1,190 @@
+{
+  "version": "0.1.0",
+  "architecture": "x64",
+  "generatedAt": "2026-09-10T21:30:59.8116190+08:00",
+  "signed": false,
+  "artifacts": [
+    {
+      "file": "Windows网络配置工具.exe",
+      "bytes": 2083328,
+      "sha256": "0139ab4d5daedd8d0f6eb768b398409a33e80d6cefcde6d0cb74e0b7375d1643"
+    },
+    {
+      "file": "Windows_Network_Config_Tool_v0.1.0.exe",
+      "bytes": 2083328,
+      "sha256": "0139ab4d5daedd8d0f6eb768b398409a33e80d6cefcde6d0cb74e0b7375d1643"
+    },
+    {
+      "file": "Windows网络配置工具_0.1.0_x64_zh-CN.msi",
+      "bytes": 1462272,
+      "sha256": "552684ef318b6d4db621673e287e9082e8fc66987210731577b8fc41edc33e9e"
+    },
+    {
+      "file": "Windows网络配置工具_0.1.0_x64-setup.exe",
+      "bytes": 948032,
+      "sha256": "687163f6a07fea20d88454dbd79fd7086c207c4d3833407716f63c50f55b7402"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "index.html",
+      "sha256": "192612241a6ef6b07f5d2964206ed911eb6b99052f2dbfe250fbd08334525f49"
+    },
+    {
+      "path": "package.json",
+      "sha256": "394c49d156c85bc091873ea31aa69a38a65987b8b99255a9c5546fb73468e2a7"
+    },
+    {
+      "path": "public/tauri.svg",
+      "sha256": "3f32698a9cb64f4d06d4df89ecb903418347589a17d297208a7f68741a8b5672"
+    },
+    {
+      "path": "public/vite.svg",
+      "sha256": "4a748afd443918bb16591c834c401dae33e87861ab5dbad0811c3a3b4a9214fb"
+    },
+    {
+      "path": "src-tauri/build.rs",
+      "sha256": "4ae2333b11623039cc115e29b696e7ff5cdfcd5b7d628280ddf48fa733e6418d"
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "sha256": "e26ad52c12ea4e09f9a366a40a98c7672663e1d1b1ae3fd249e174fe91c23a04"
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "sha256": "e948466afab9d5d090b96d063a69cbb413176c5005c049707fbbffe41fb57175"
+    },
+    {
+      "path": "src-tauri/icons/128x128.png",
+      "sha256": "19b4fec485db7df51a691fcce72a3dd6f983e754fc4262da7154e4a4c688f69e"
+    },
+    {
+      "path": "src-tauri/icons/128x128@2x.png",
+      "sha256": "6c7660390d65217fe8de0892862254f47aee77e0af7096c75b8bfe168c5403f7"
+    },
+    {
+      "path": "src-tauri/icons/32x32.png",
+      "sha256": "1c6782dc65c8111c12cbc1882a0fea5e71ab8e51b18da2ce9580f5c88860ed02"
+    },
+    {
+      "path": "src-tauri/icons/icon.icns",
+      "sha256": "3dc10493b7de48a61de58f768f8a5708d3a44a068c148cedf0502b9b9b71ba5d"
+    },
+    {
+      "path": "src-tauri/icons/icon.ico",
+      "sha256": "392206b573a809997f3ff16fe68f456a52e931c372107eade9572b329bbe3321"
+    },
+    {
+      "path": "src-tauri/icons/icon.png",
+      "sha256": "273cd669e07c455ad1c7c095890a37984652157cee73128a867300067dfb80e7"
+    },
+    {
+      "path": "src-tauri/icons/Square107x107Logo.png",
+      "sha256": "54f7a0f58c96a4b023c1edc4b53fc443e27dace50e345f6936fa29bc20f785ca"
+    },
+    {
+      "path": "src-tauri/icons/Square142x142Logo.png",
+      "sha256": "fec1e2080ca73cd4c4a123b23b1cd364059a8a8efeba3076e21dfefed390693b"
+    },
+    {
+      "path": "src-tauri/icons/Square150x150Logo.png",
+      "sha256": "65fb570cb0e61ffce02ad67784cb200a0bf058400300980a46fa0d0c8f43a77a"
+    },
+    {
+      "path": "src-tauri/icons/Square284x284Logo.png",
+      "sha256": "ea0b7c5d4b1d1ab9c91d2f7c9b069c8dfbf4557b0649a5777d47332cde610262"
+    },
+    {
+      "path": "src-tauri/icons/Square30x30Logo.png",
+      "sha256": "cc72279c41b4ed343e8db7e7541ceef7b6b23edaa83d4e7338421dfcb8d63c33"
+    },
+    {
+      "path": "src-tauri/icons/Square310x310Logo.png",
+      "sha256": "9733a89c539115de3c49bd06720bfc99639d9a918f5df48a810e267cf3554119"
+    },
+    {
+      "path": "src-tauri/icons/Square44x44Logo.png",
+      "sha256": "10be9840e58fb018eb9029601d42008e16c0c9cfa66b8f9467fee94f600160d4"
+    },
+    {
+      "path": "src-tauri/icons/Square71x71Logo.png",
+      "sha256": "2937fc83324cd9a1fddcfefd5927c791af31996a6840bfb3e2f1d578ad4129de"
+    },
+    {
+      "path": "src-tauri/icons/Square89x89Logo.png",
+      "sha256": "12aed0e7ee06cb631427dc9da72c0c7ecf03857fbc4884d0c31f78314feb6c7f"
+    },
+    {
+      "path": "src-tauri/icons/StoreLogo.png",
+      "sha256": "91a54024dd47230991546088f2e75d3e3199b3ccc9fe40f3f6b7d3bf1cbf7776"
+    },
+    {
+      "path": "src-tauri/src/domain.rs",
+      "sha256": "5967a6ec8be653387bfcc4e0f19ec1812c02b6fdbf5f52ffc6f304b590730a6c"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "sha256": "5d41852cfb4f167d1f0c09436e949eaa93685b8e37757be4433f7a0e14f4b09e"
+    },
+    {
+      "path": "src-tauri/src/main.rs",
+      "sha256": "d1072665dd4ccf120ceeb6a63ca95b39b60460399c907308f8c28b18454ff143"
+    },
+    {
+      "path": "src-tauri/src/platform.rs",
+      "sha256": "432071e1e8120b3e9b9e88cf17b582fe3f98848b414c02511dd6728346fe32fc"
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "sha256": "ce24d6e1833b01b0f31c7ca348d6b09399550b97bf0690e487a9d199b49f328f"
+    },
+    {
+      "path": "src/App.vue",
+      "sha256": "4ecb86d830b87983eff2836938dd2045be2cc215cb77a619350f33e4c6906d0d"
+    },
+    {
+      "path": "src/assets/vue.svg",
+      "sha256": "5532db34f1c52841881bab8aeca6c3e8d092bd21a689a65f4d8f8cf8041eef9d"
+    },
+    {
+      "path": "src/composables/useConfigHistory.ts",
+      "sha256": "63d182fc6669f6309409addcf592709e7641918cb7830851e61389eb7d1bf43a"
+    },
+    {
+      "path": "src/composables/useNetworkConfig.ts",
+      "sha256": "c6d21f0bd29b3db81776b92f170e7c2f709b3f4726f4deaca8e59286e38af965"
+    },
+    {
+      "path": "src/main.ts",
+      "sha256": "47e56c0fce47e381544d2efcb2f4bb23b8a311a4197873da8f85a19d249e9979"
+    },
+    {
+      "path": "src/services/networkClient.ts",
+      "sha256": "f12f1012346bc0a4bf1f44b356aec467fd34be29436c51f1eea5f0a591f16d92"
+    },
+    {
+      "path": "src/tauri.d.ts",
+      "sha256": "6e283c24416a3528dd593580b31cbe55e0161f9b62a3195559a1ec8d04c243c9"
+    },
+    {
+      "path": "src/types/network.ts",
+      "sha256": "64999fd004e3c4aa963f901c656482f9cc8d40eda4b032a156ef733778153cb6"
+    },
+    {
+      "path": "src/utils/validation.ts",
+      "sha256": "8d58b20630bab5093608a267b8f06ae379259f4a23da90a27853c2efd95f7f6a"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "sha256": "23684774ecb20e3c5f5251dbcd357bdf77faff12b613d78bacc7ad3accd4611a"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "cca0c20f7d6a421034297f18adf4636be3df38670a970596b7efec2fab1923eb"
+    },
+    {
+      "path": "yarn.lock",
+      "sha256": "a85861f3313b189f40e045bf666d80487f5811d96270751405f28e508a43a210"
+    }
+  ]
+}

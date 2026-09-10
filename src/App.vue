@@ -519,7 +519,13 @@ onMounted(() => {
               <div class="mode-select-group">
                 <div class="mode-select-header">
                   <label for="select-ipv6-mode">IPv6 地址分配</label>
-                  <span class="mode-hint">{{ ipConfig.ipv6Mode === 'dhcp' ? '由路由器通告 (SLAAC) 或 DHCPv6 自动分配' : '手动配置静态 IPv6 地址、前缀长度及默认网关' }}</span>
+                  <span class="mode-hint">{{
+                    ipConfig.ipv6Mode === 'dhcp'
+                      ? '由路由器通告 (SLAAC) 或 DHCPv6 自动分配'
+                      : ipConfig.ipv6Mode === 'static'
+                      ? '手动配置静态 IPv6 地址、前缀长度及默认网关'
+                      : '保持网卡现有 IPv6 地址及分配模式不变'
+                  }}</span>
                 </div>
                 <div class="select-wrapper">
                   <select
@@ -527,6 +533,7 @@ onMounted(() => {
                     v-model="ipConfig.ipv6Mode"
                     :disabled="isLoading"
                   >
+                    <option :value="undefined">保持现状 (不修改 IPv6 地址模式)</option>
                     <option value="dhcp">自动获取 (DHCP / 路由器发现)</option>
                     <option value="static">手动配置 (静态 IPv6)</option>
                   </select>
@@ -534,11 +541,14 @@ onMounted(() => {
               </div>
 
               <!-- IPv6 地址字段 -->
-              <div v-if="ipConfig.ipv6Mode === 'dhcp'" class="dhcp-info-banner">
+              <div v-if="!ipConfig.ipv6Mode || ipConfig.ipv6Mode === 'keep'" class="dhcp-info-banner">
+                <span>ℹ️ 当前设置为 <strong>保持现有 IPv6 配置</strong>。应用配置时将保留该网卡原有 IPv6 地址与分配模式。</span>
+              </div>
+              <div v-else-if="ipConfig.ipv6Mode === 'dhcp'" class="dhcp-info-banner">
                 <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 地址 (DHCPv6 / SLAAC)</strong>。</span>
                 <span v-if="ipConfig.ipv6Ip" class="dhcp-lease-info">当前分配 IPv6: {{ ipConfig.ipv6Ip }} / {{ ipConfig.ipv6Prefix || 64 }}</span>
               </div>
-              <div v-else class="static-ip-fields">
+              <div v-else-if="ipConfig.ipv6Mode === 'static'" class="static-ip-fields">
                 <div class="form-row">
                   <div class="form-group">
                     <label for="input-ipv6-ip">IPv6 地址 <span class="required">*</span></label>
@@ -584,7 +594,13 @@ onMounted(() => {
               <div class="mode-select-group">
                 <div class="mode-select-header">
                   <label for="select-ipv6-dns-mode">IPv6 DNS 服务器分配</label>
-                  <span class="mode-hint">{{ ipConfig.ipv6DnsMode === 'dhcp' ? '自动获取 IPv6 DNS' : '手动指定 IPv6 首选/备用 DNS' }}</span>
+                  <span class="mode-hint">{{
+                    ipConfig.ipv6DnsMode === 'dhcp'
+                      ? '自动获取 IPv6 DNS'
+                      : ipConfig.ipv6DnsMode === 'static'
+                      ? '手动指定 IPv6 首选/备用 DNS'
+                      : '保持网卡现有 IPv6 DNS 设置不变'
+                  }}</span>
                 </div>
                 <div class="select-wrapper">
                   <select
@@ -592,13 +608,17 @@ onMounted(() => {
                     v-model="ipConfig.ipv6DnsMode"
                     :disabled="isLoading"
                   >
+                    <option :value="undefined">保持现状 (不修改 IPv6 DNS)</option>
                     <option value="dhcp">自动获取 (DHCPv6)</option>
                     <option value="static">手动配置 (静态 IPv6 DNS)</option>
                   </select>
                 </div>
               </div>
 
-              <div v-if="ipConfig.ipv6DnsMode === 'dhcp'" class="dhcp-info-banner">
+              <div v-if="!ipConfig.ipv6DnsMode || ipConfig.ipv6DnsMode === 'keep'" class="dhcp-info-banner">
+                <span>ℹ️ 当前设置为 <strong>保持现有 IPv6 DNS</strong>。应用配置时不会修改该网卡的 IPv6 DNS 服务器。</span>
+              </div>
+              <div v-else-if="ipConfig.ipv6DnsMode === 'dhcp'" class="dhcp-info-banner">
                 <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 DNS (DHCPv6)</strong>。如需自定义<strong>首选与备用 IPv6 DNS</strong>，请将上方分配模式切换为“手动配置”。</span>
                 <span v-if="currentSnapshot?.ipv6DnsServers && currentSnapshot.ipv6DnsServers.length > 0" class="dhcp-lease-info">
                   当前自动获取到: 首选 IPv6 DNS: {{ currentSnapshot.ipv6DnsServers[0] }}<template v-if="currentSnapshot.ipv6DnsServers[1]">，备用 IPv6 DNS: {{ currentSnapshot.ipv6DnsServers[1] }}</template><template v-else> (局域网路由器/上游仅下发了 1 个 IPv6 DNS)</template>
@@ -607,7 +627,7 @@ onMounted(() => {
                   当前获取到: 首选 IPv6 DNS: {{ ipConfig.ipv6Dns1 }}<template v-if="ipConfig.ipv6Dns2">，备用 IPv6 DNS: {{ ipConfig.ipv6Dns2 }}</template>
                 </span>
               </div>
-              <template v-else>
+              <template v-else-if="ipConfig.ipv6DnsMode === 'static'">
                 <!-- 常用公共 IPv6 DNS 预设 -->
                 <div class="preset-section">
                   <div class="preset-label-bar">
@@ -631,7 +651,7 @@ onMounted(() => {
                 <!-- IPv6 DNS 输入字段 -->
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="input-ipv6-dns1">首选 IPv6 DNS 服务器 <span class="optional">(推荐填入)</span></label>
+                    <label for="input-ipv6-dns1">首选 IPv6 DNS 服务器 <span class="optional">(必填)</span></label>
                     <input
                       id="input-ipv6-dns1"
                       v-model="ipConfig.ipv6Dns1"

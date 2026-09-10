@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "vue-tsc --noEmit",
+    "test:regression": "node tests/regression/ipv6/run.mjs",
+    "release": "pwsh -NoProfile -File scripts/build-release.ps1",
     "clean": "rimraf src-tauri/target dist"
   },
   "dependencies": {

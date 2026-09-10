@@ -38,6 +38,9 @@ export interface Ipv6AddressConfig {
   ipAddress: string;
   /** 网络前缀长度 (1..=128，通常为 64) */
   prefixLength: number;
+  /** Windows 地址来源；旧快照可缺失，不能据此推断为手动地址 */
+  prefixOrigin?: string;
+  suffixOrigin?: string;
 }
 
 /**

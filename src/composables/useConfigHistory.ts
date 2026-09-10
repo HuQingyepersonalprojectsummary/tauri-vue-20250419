@@ -37,9 +37,12 @@ export function useConfigHistory() {
     const record = item as Record<string, unknown>;
 
     // 必填字段严格校验
-    if (typeof record.adapter !== 'string' || record.adapter.trim().length === 0) return false;
-    if (typeof record.ip !== 'string' || record.ip.trim().length === 0) return false;
-    if (typeof record.mask !== 'string' || record.mask.trim().length === 0) return false;
+    if (typeof record.adapter !== 'string') return false;
+    const adapterStr = record.adapter.trim();
+    if (adapterStr.length === 0 || adapterStr.length > 256) return false;
+
+    if (typeof record.ip !== 'string') return false;
+    if (typeof record.mask !== 'string') return false;
 
     // 可选字段类型严格校验：若存在必须为 string，防止传入非字符串抛错导致整批清空 (R-09)
     if (record.gateway !== undefined && record.gateway !== null && typeof record.gateway !== 'string') return false;
@@ -51,14 +54,19 @@ export function useConfigHistory() {
       return false;
     }
 
-    // 适配器名称长度限制，防止超长字符串注入攻击
-    const adapterStr = record.adapter.trim();
-    if (adapterStr.length === 0 || adapterStr.length > 256) return false;
-
-    // IPv4 地址与掩码基本点分十进制格式安全校验 (F-08)
+    // IPv4 地址与掩码基本点分十进制格式安全校验 (F-08, V6-09)
     const ipv4Regex = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)$/;
-    if (!ipv4Regex.test(record.ip.trim())) return false;
-    if (!ipv4Regex.test(record.mask.trim())) return false;
+    const ipTrimmed = record.ip.trim();
+    const maskTrimmed = record.mask.trim();
+
+    // 当 IPv4 处于静态模式或旧版隐式静态模式（含非空 IP）时，IPv4 地址与掩码为必填
+    if (record.ipMode === 'static' || (record.ipMode === undefined && (!record.ipv6Mode || record.ipv6Mode === 'dhcp' || record.ipv6Mode === 'keep') && ipTrimmed.length > 0)) {
+      if (ipTrimmed.length === 0 || !ipv4Regex.test(ipTrimmed)) return false;
+      if (maskTrimmed.length === 0 || !ipv4Regex.test(maskTrimmed)) return false;
+    } else {
+      if (ipTrimmed.length > 0 && !ipv4Regex.test(ipTrimmed)) return false;
+      if (maskTrimmed.length > 0 && !ipv4Regex.test(maskTrimmed)) return false;
+    }
 
     // 可选字段格式与长度校验
     if (record.gateway !== undefined && record.gateway !== null) {

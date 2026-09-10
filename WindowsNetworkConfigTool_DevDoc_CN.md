@@ -1,212 +1,138 @@
-# 🛠️ Windows 网络配置工具开发文档 (中文)
+# Windows 网络配置工具开发文档
 
-## 🏁 一、项目简介
+更新日期：2026-09-10。适用于当前 0.1.0 源码和 Windows x64 构建。英文版见 [Developer guide](./WindowsNetworkConfigTool_DevDoc_EN.md)。
 
-本项目基于 [Tauri](https://tauri.app/) + [Vue 3](https://vuejs.org/) 技术栈开发，为 Windows 用户提供安全、直观、可靠的网络适配器配置工具。用户可通过图形界面查看、修改本机网络适配器的：
-- **IPv4 地址与掩码**（支持严格连续二进制掩码校验与零前导校验，支持 DHCP 与静态模式独立切换）
-- **默认网关**（支持同网段可达性校验）
-- **常规 DNS 服务器**（首选与备用 DNS 依赖关系校验）
-- **DNS over HTTPS (DoH) 加密解析**（开/关、开(自动)、开(手动模板) 及未加密请求回退）
-- **IPv6 协议组件绑定状态**（安全启用或禁用适配器 `ms_tcpip6` 协议）
-- **IPv6 地址与前缀分配**（支持 SLAAC / DHCPv6 自动分配与静态手动指定）
-- **IPv6 首选与备用 DNS**（支持 DHCPv6 自动获取与静态指定首选/备用权威 DNS）
-- **常用公共 DNS / DoH / IPv6 一键预设**（阿里 DNS、腾讯 DNSPod、Cloudflare、Google）
-- **带版本校验与安全持久化的配置历史记录**（上限 10 条）
-- **全流程静默后台执行**（集成 Windows `CREATE_NO_WINDOW`，彻底消除黑框弹窗闪烁）
+## 1. 环境与依赖
 
----
+本次验证环境为 Node.js 24.16.0、Rust/Cargo 1.91.1、PowerShell 7、Windows MSVC 工具链。需要 Visual Studio C++ 构建工具和 Windows SDK；运行桌面界面需要 WebView2 Runtime。构建环境版本是本次实测值，不代表已验证所有较早版本。
 
-## 二、架构设计与安全理念
+锁定的主要前端依赖：Vue 3.5.13、Vite 6.4.3、TypeScript 5.8.3、Tauri API 1.6.0、Tauri CLI 1.6.3。Rust 依赖精确版本以 Cargo.lock 为准。不要将 package.json 的范围下限当作实际安装版本。
 
-```mermaid
-flowchart TD
-  UI[Vue 3 前端界面] -->|类型化 IPC| IPC[Tauri Commands lib.rs]
-  IPC -->|串行写锁 NetworkLock 超时防护| S[事务编排与校验 domain.rs / platform.rs]
-  S -->|stdin JSON 无注入管道 + CREATE_NO_WINDOW| P[PowerShell 静默快照提取: IPv4 + IPv6 + DoH]
-  S -->|可信 System32 路径 + CREATE_NO_WINDOW| N[netsh.exe 静默应用 IPv4/IPv6 地址与 DNS]
-  S -->|可信 System32 路径 + CREATE_NO_WINDOW| D[PowerShell 静默配置 DoH 与 IPv6 绑定]
-  D -->|读回深度比对校验| Check{校验是否完全生效}
-  Check -- 校验失败或执行异常 --> R[自动安全回滚至修改前快照 (恢复 IPv4/IPv6/DNS/DoH)]
-  Check -- 校验完全一致 --> V[确认成功并返回前端]
+```powershell
+npx --yes yarn@1.22.22 install --frozen-lockfile
+cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+npm run tauri -- dev
 ```
 
-### 1. 技术选型
-- **前端**：Vue 3 Composition API (`<script setup lang="ts">`) + TypeScript + Vite，提供现代响应式布局、Windows 11 Fluent 风格控件与无障碍表单体验。
-- **后端/桌面容器**：Tauri 1 (Rust)，严格遵循系统安全与参数分离原则，打包为原生 Windows 轻量桌面应用。
+项目只维护 yarn.lock。npm 可用于执行 scripts，不应使用 npm install 生成第二套锁文件。离线检查要求已经缓存 Cargo 依赖。前端开发服务器使用 3000 端口，端口被占用时会失败而非自动切换。
 
-### 2. 核心安全与可靠性设计
-- **防代码注入 (A-01)**：所有外部进程均采用固定静态脚本，参数通过标准输入 (`stdin JSON`) 安全传输，不进行任何动态脚本文本拼接。
-- **防止可执行文件劫持 (A-12)**：系统命令优先通过 `GetSystemDirectoryW` 定位 `SystemRoot\System32` 绝对路径 (`powershell.exe`、`netsh.exe`)，不依赖环境变量 `PATH`。
-- **后台静默执行 (CREATE_NO_WINDOW)**：所有进程创建均附带 Windows 原生标志位 `0x08000000`，杜绝任何控制台弹窗与闪烁，保持内存占用在 35MB 左右。
-- **作业对象孤儿清理 (Job Object)**：后端将外部子进程加入受管 Job Object，附带 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，主程序退出时立即强制回收子进程。
-- **事务性变更与读回校验 (A-03)**：变更前先采集原配置全息快照（包含 IPv4、掩码、网关、常规 DNS、IPv6 启用状态、IPv6 地址/前缀/网关/主备 DNS 与 DoH 状态）；变更后主动读回系统配置确认生效；若步骤失败或读回不匹配，自动尝试还原现场，避免网络中断。
-- **并发写锁与超时防死锁 (A-04)**：后端引入 `NetworkLock` 全局锁，写操作互斥串行化；耗时系统调用置于独立任务调度，并施加超时防挂起限制。
-- **严格网络语义校验 (A-06)**：前后端对齐严谨的 IPv4 校验（拒绝前导零）、连续二进制掩码校验（拒绝 `255.0.255.0` 等非连续掩码）、网关同网段校验、IPv6 合法性格式校验以及 DoH HTTPS 协议安全校验。
-- **网卡草稿独立绑定 (A-08)**：表单草稿与网卡身份绑定，切换网卡自动同步目标状态，杜绝跨网卡误配置。
-- **历史记录安全隔离 (A-09, A-10)**：结构化校验版本 (`schemaVersion: 1`)，最多保留 10 条有效记录；本地存储异常仅提示警告，不误报网络配置失败。
+## 2. 模块分工
 
----
+| 路径 | 职责 |
+|---|---|
+| src/App.vue | 网卡列表、表单、DNS 预设、操作反馈与历史界面 |
+| src/composables/useNetworkConfig.ts | 当前快照、网卡草稿、请求序号、校验与应用流程 |
+| src/composables/useConfigHistory.ts | 版本化历史、坏项过滤、最多 10 条记录、存储告警 |
+| src/services/networkClient.ts | 唯一的类型化 Tauri invoke 包装 |
+| src/types/network.ts | 前端 DTO 定义 |
+| src/utils/validation.ts | IPv4、掩码、网关和 IPv6 输入校验 |
+| src-tauri/src/lib.rs | IPC 注册、异步阻塞任务、进程内锁和 Windows 命名互斥体 |
+| src-tauri/src/domain.rs | Rust DTO、网络语义校验、快照及地址来源恢复核验 |
+| src-tauri/src/platform.rs | 系统工具定位、进程执行、PowerShell 查询、netsh 修改、补偿 |
+| src-tauri/src/main.rs | 桌面入口；release 使用 Windows GUI 子系统 |
+| src-tauri/tauri.conf.json | 窗口、安全策略、产品名、版本和安装包设置 |
+| tests/regression/ipv6 | 生产事务与 composable 的隔离故障注入回归 |
+| scripts | 构建与产物导出脚本 |
+| releases | EXE/MSI/NSIS、SHA-256 与源码指纹 |
 
-## 三、项目结构说明
+保持领域校验不依赖系统 IO；新的系统操作放入 platform 层；前端通过 networkClient 调用，避免散落 invoke。网络操作必须保留失败原因，并区分应用失败、恢复失败和存储失败。
 
-```
-├── src/
-│   ├── types/
-│   │   └── network.ts            # 前端 DTO 接口定义 (含 DohConfig, AdapterSnapshot, Ipv4Config)
-│   ├── utils/
-│   │   └── validation.ts         # IPv4、连续掩码、网关子网及 IPv6 严谨校验
-│   ├── services/
-│   │   └── networkClient.ts      # 类型化 Tauri IPC 调用层
-│   ├── composables/
-│   │   ├── useNetworkConfig.ts   # 网卡选择、DoH / IPv6 状态草稿隔离与应用状态管理
-│   │   └── useConfigHistory.ts   # 历史记录校验、持久化与异常隔离
-│   ├── App.vue                   # 页面排版、Fluent 控件与交互组件
-│   └── main.ts                   # 前端应用入口
-├── src-tauri/
-│   ├── src/
-│   │   ├── domain.rs             # 领域模型、IPv4/IPv6 语义校验与快照比对算法
-│   │   ├── platform.rs           # 可信路径、防注入管道、DoH/IPv6 管理与事务回滚
-│   │   ├── lib.rs                # Tauri 命令注册与全局写锁
-│   │   └── main.rs               # 后端主入口
-│   └── tauri.conf.json           # Tauri 配置 (包含窗口尺寸、安全 CSP 及产物名称)
-├── docs/                         # 审计与重构报告归档
-├── releases/                     # 发行版输出目录 (包含便携版与 MSI)
-├── package.json                  # 前端依赖与脚本
-├── vite.config.ts                # Vite 配置
-├── build-app.bat                 # 一键编译构建脚本
-├── 打包说明.md                   # 便携版与安装包打包指南
-└── README.md                     # 项目概览与使用文档
-```
+## 3. IPC 与数据契约
 
----
+Rust 使用 serde camelCase 与前端交互。DTO 目前由 Rust 和 TypeScript 手工同步；修改字段时同步类型、调用方、快照解析和回归夹具。
 
-## 四、API 接口契约说明
+| 命令 | invoke 参数 | 返回值 |
+|---|---|---|
+| get_network_adapters | 无 | AdapterInfo[] |
+| get_current_config | `{ adapterName: string }` | AdapterSnapshot |
+| apply_adapter_ipv4_config | `{ cfg: Ipv4Config }` | OperationResult |
+| greet | `{ name: string }` | 模板遗留问候字符串；不属于网络业务 API |
 
-### 1. 获取网络适配器列表
-- **命令名**：`get_network_adapters`
-- **入参**：无
-- **出参**：`Vec<AdapterInfo>`
+`apply_adapter_ipv4_config` 为兼容保留的命令名，实际支持 IPv4、IPv6、DNS 与 DoH。
+
+### 变更意图
+
+| 字段 | 语义 |
+|---|---|
+| adapter | 目标网卡名称；当前仍以名称提交和执行 |
+| ipMode / dnsMode | keep 保持、dhcp 自动、static 手动；缺失时兼容旧版字段推断，新调用应显式传入 |
+| ip / mask / gateway | 手动 IPv4 地址及掩码必填；网关可选，填写时校验同子网 |
+| dns1 / dns2 | IPv4 DNS；仅填 DNS2 会被拒绝；空静态 IPv4 DNS 的恢复语义仍有边界限制 |
+| doh1 / doh2 | 对应 IPv4 DNS 的 off/auto/manual、template、allowFallback |
+| ipv6Enabled | true/false 修改绑定；缺失表示保持绑定状态 |
+| ipv6Mode / ipv6DnsMode | keep/dhcp/static；缺失按 keep 处理，不用旧快照猜测用户意图 |
+| ipv6Ip / ipv6Prefix / ipv6Gateway | 静态 IPv6 地址、1–128 前缀和可选网关；后端未传前缀时默认为 64 |
+| ipv6Dns1 / ipv6Dns2 | 手动 DNS1 必填、DNS2 可选；空值及纯空白在任何写入前拒绝 |
+
+仅修改 IPv6 DNS 的例子：
+
 ```typescript
-interface AdapterInfo {
-  name: string;             // 适配器名称 (如 "以太网")
-  status: string;           // 格式化友好状态
-  rawStatus?: string;       // 原始状态 (Up, Disconnected 等)
-  displayName?: string;     // 设备描述
-  interfaceIndex?: number;  // 接口索引
-  interfaceGuid?: string;   // 接口唯一 GUID
-  macAddress?: string;      // MAC 物理地址
-}
+await networkClient.applyAdapterIpv4Config({
+  adapter: '以太网',
+  ipMode: 'keep', dnsMode: 'keep',
+  ip: '', mask: '', gateway: '', dns1: '', dns2: '',
+  ipv6Mode: 'keep', ipv6DnsMode: 'static',
+  ipv6Dns1: '2001:db8::53', ipv6Dns2: ''
+});
 ```
 
-### 2. 获取当前适配器完整快照
-- **命令名**：`get_current_config`
-- **入参**：`{ adapterName: string }`
-- **出参**：`AdapterSnapshot`
-```typescript
-interface DohConfig {
-  mode: 'off' | 'auto' | 'manual'; // DoH 模式
-  template: string;                // HTTPS 模板 URL
-  allowFallback: boolean;          // 是否允许降级为未加密 UDP 请求
-}
+示例地址为文档地址，实际使用时替换为所需服务器。不要为了补全表单而把 undefined 改成 dhcp/static；旧历史和网卡草稿往返必须保持相同意图。
 
-interface AdapterSnapshot {
-  adapterName: string;
-  interfaceIndex: number;
-  interfaceGuid: string;
-  status: string;
-  dhcpEnabled: boolean;
-  dnsDhcpEnabled?: boolean;
-  addresses: { ipAddress: string; prefixLength: number; mask: string }[];
-  gateways: string[];
-  dnsServers: string[];
-  ip: string;
-  mask: string;
-  gateway: string;
-  dns1: string;
-  dns2: string;
-  doh1?: DohConfig;
-  doh2?: DohConfig;
-  ipv6Enabled?: boolean;
-  ipv6DhcpEnabled?: boolean;
-  ipv6DnsDhcpEnabled?: boolean;
-  ipv6Addresses?: { ipAddress: string; prefixLength: number }[];
-  ipv6Gateways?: string[];
-  ipv6DnsServers?: string[];
-  ipv6Ip?: string;
-  ipv6Prefix?: number;
-  ipv6Gateway?: string;
-  ipv6Dns1?: string;
-  ipv6Dns2?: string;
-}
-```
+### 快照与结果
 
-### 3. 事务式应用网络配置
-- **命令名**：`apply_adapter_ipv4_config`
-- **入参**：`{ cfg: Ipv4Config }`
-```typescript
-interface Ipv4Config {
-  adapter: string;
-  ip: string;
-  mask: string;
-  gateway: string;
-  dns1: string;
-  dns2: string;
-  doh1?: DohConfig;
-  doh2?: DohConfig;
-  ipv6Enabled?: boolean;
-  ipMode?: 'dhcp' | 'static';
-  dnsMode?: 'dhcp' | 'static';
-  ipv6Mode?: 'dhcp' | 'static';
-  ipv6Ip?: string;
-  ipv6Prefix?: number;
-  ipv6Gateway?: string;
-  ipv6DnsMode?: 'dhcp' | 'static';
-  ipv6Dns1?: string;
-  ipv6Dns2?: string;
-}
-```
-- **出参**：`OperationResult`
-```typescript
-interface OperationResult {
-  success: boolean;            // 是否完全成功生效
-  message: string;            // 详细结果说明
-  rolledBack: boolean;        // 是否触发了安全回滚
-  rollbackMessage?: string;   // 回滚状态描述
-  snapshot?: AdapterSnapshot; // 读回校验后的最新状态快照
-}
-```
+AdapterSnapshot 包含接口名称、GUID/index、状态、IPv4 地址列表、网关、DNS、DoH 状态和 IPv6 详细字段。IPv6 地址保存 ipAddress、prefixLength、prefixOrigin、suffixOrigin；来源缺失保持未知。来源信息用于区分原手动地址与 DHCP/SLAAC 地址，不能仅按 IP 字符串判断恢复完成。
 
----
+OperationResult 的含义：
 
-## 五、开发与构建
+- success：请求通过了应用后的读回核验。
+- message：应用结果或原始失败原因。
+- rolledBack：补偿命令成功且恢复读回核验通过；不等于“尝试过回滚”。
+- rollbackMessage：恢复诊断；失败时必须向用户显示。
+- snapshot：最终读到的现场；无法读回可为 null，前端应清空旧概览，不能继续展示为当前状态。
 
-### 1. 安装依赖
-```bash
-npm install
-```
+参数或前置能力检查失败可直接 reject IPC Promise；已经开始修改后的失败通常返回 success=false 及补偿诊断。不能把两种失败路径当作同一类返回。
 
-### 2. 本地开发 (启动前端与桌面窗口)
-```bash
-npm run tauri dev
-```
+## 4. 事务执行与恢复
 
-### 3. 前端类型检查与构建
-```bash
+1. IPC 将阻塞系统工作放到 spawn_blocking，写操作持有进程内锁和 Windows 命名互斥体。
+2. 校验 IPv4/IPv6、DNS 与 DoH；获取原现场；检查状态、DoH 能力及需要修改的 IPv6 地址来源。
+3. 按明确模式执行 IPv4 地址/DNS、扩展设置、IPv6 地址和 DNS。keep 跳过该项主动写入。
+4. 每次尝试删除/添加 IPv6 地址前记录 IP，和不可变的原快照一起保存原前缀及来源；命令超时也按可能已经生效处理。
+5. 读回并比较请求与实际状态，IPv6 地址比较采用规范化语义，DNS 比较完整数量、顺序和值。
+6. 出错后尝试补偿。清理本次触及地址，包括同 IP 的前缀/来源替换；原手动地址按前缀恢复，原自动地址由自动机制重新获取。
+7. 再次读回恢复现场。静态残留、未知来源、未恢复的手动前缀或命令失败，都不能返回 rolledBack=true。自动地址可重新分配，不要求 DHCP/SLAAC 地址集合恒定。
+
+该流程不是操作系统原子事务。它没有持久化事务日志，进程崩溃/重启后无法继续内存中的补偿。复杂路由属性、多网关/多 DNS、地址生命周期等恢复范围仍见 [已知限制](./docs/known-limitations.md)。
+
+## 5. 系统执行与权限
+
+PowerShell 使用固定脚本，通过 stdin JSON 传入数据；netsh 使用独立参数数组。系统工具由可信系统目录定位，不能将用户输入拼进脚本。子进程配置 CREATE_NO_WINDOW；release 主程序使用 GUI 子系统。
+
+执行器设置超时并使用 Windows Job Object 管理子进程，但 Job 创建/绑定失败及终止确认仍有待完善的路径。命名互斥体在 Global 等待超时后不会改取 Local；权限拒绝回退 Local 的跨权限隔离仍未完成验证。
+
+当前没有按需提权 helper，也没有为主应用配置 requireAdministrator 清单。管理员运行由使用者选择；不能把安装器 UAC 当作主程序自动提权。系统级 DoH 条目可能被多网卡共用，变更时应理解其影响范围。
+
+## 6. 前端状态与历史
+
+快照与表单分开维护。异步读取用请求序号忽略过期结果，切换网卡恢复对应内存草稿。载入历史后重新查询目标状态，同时保留历史表单值；不存在的历史网卡会被拒绝。
+
+历史存储键为 net_config_history_v1，schemaVersion 为 1，上限 10 条。读取时逐项校验和过滤，保存异常独立提示。记录不是系统快照备份，也不代替人工恢复方案；草稿不是跨进程持久化数据。
+
+## 7. 检查、构建与维护
+
+```powershell
 npm run typecheck
-npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
+npm run test:regression
+npm run release
 ```
 
-### 4. 后端编译与单元测试
-```bash
-cd src-tauri
-cargo test
-cargo clippy -- -D warnings
-cargo fmt --check
-```
+回归命令测试当前源码，临时 Rust 工程仅替换系统 IO，Vue 使用实际 composable。测试输出进入被忽略的 tests/regression/ipv6/output；任何探针失败会让命令非零退出。修改生产函数边界时必须同步提取探针并验证它仍运行生产逻辑。
 
-### 5. 一键打包 Release 便携版
-双击运行根目录下脚本：
-```cmd
-build-app.bat
-```
-编译产物位于：`src-tauri/target/release/Windows网络配置工具.exe`。
+构建命令生成 EXE、MSI 和 NSIS，并将本轮文件导出到 releases。scripts/export-release.ps1 在复制前检查完整产物集合及构建时间，生成源码指纹和 SHA-256。详见 [打包说明](./打包说明.md)。
+
+维护版本时同步 package.json、src-tauri/Cargo.toml、Cargo.lock 中本项目版本及 tauri.conf.json；更新依赖时同时更新对应锁文件并重跑检查。提交前检查源码、文档、产物哈希和 diff，推送使用普通 fast-forward，避免覆盖远端工作。
+
+审计过程的重复日期报告和原始日志已收敛为 [验证记录](./docs/verification.md) 与 [已知限制](./docs/known-limitations.md)，可复用的探针迁入 tests。不能将历史发现的删除理解为所有缺陷已关闭。

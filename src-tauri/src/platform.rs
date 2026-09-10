@@ -472,9 +472,9 @@ if ($hasDohCmdlet) {
 # 查询 IPv6 地址与前缀
 $ipv6Addresses = @()
 try {
-    $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Where-Object { $_.IPAddress -notlike 'fe80:*' } | Select-Object IPAddress, PrefixLength)
+    $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Where-Object { $_.IPAddress -notlike 'fe80:*' } | Select-Object IPAddress, PrefixLength, @{Name='PrefixOrigin';Expression={[string]$_.PrefixOrigin}}, @{Name='SuffixOrigin';Expression={[string]$_.SuffixOrigin}})
     if ($ipv6Addresses.Count -eq 0) {
-        $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Select-Object IPAddress, PrefixLength)
+        $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Select-Object IPAddress, PrefixLength, @{Name='PrefixOrigin';Expression={[string]$_.PrefixOrigin}}, @{Name='SuffixOrigin';Expression={[string]$_.SuffixOrigin}})
     }
 } catch {
     if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230') {
@@ -485,9 +485,9 @@ try {
 # 查询 IPv6 默认路由网关
 $ipv6Gateways = @()
 try {
-    $ipv6Gateways = @(Get-NetRoute -InterfaceIndex $adapter.InterfaceIndex -DestinationPrefix '::/0' -AddressFamily IPv6 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty NextHop)
+    $ipv6Gateways = @(Get-NetRoute -InterfaceIndex $adapter.InterfaceIndex -DestinationPrefix '::/0' -AddressFamily IPv6 | Select-Object -ExpandProperty NextHop)
 } catch {
-    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230') {
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound') {
         throw "查询 IPv6 默认路由网关异常: $_"
     }
 }
@@ -495,7 +495,7 @@ try {
 # 查询 IPv6 DNS 服务器
 $ipv6Dns = @()
 try {
-    $ipv6Dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ServerAddresses)
+    $ipv6Dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Select-Object -ExpandProperty ServerAddresses)
 } catch {
     throw "查询 IPv6 DNS 服务器异常: $_"
 }
@@ -503,7 +503,7 @@ try {
 # 查询 IPv6 DHCP / SLAAC 状态
 $ipv6Dhcp = $true
 try {
-    $ipIf6 = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue
+    $ipIf6 = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6
     if ($ipIf6) {
         $ipv6Dhcp = ($ipIf6.Dhcp -eq 'Enabled' -or $ipIf6.RouterDiscovery -eq 'Enabled')
     }
@@ -978,18 +978,40 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
     let mut ipv6_addresses = Vec::new();
     if let Some(arr) = val.get("ipv6Addresses").and_then(|v| v.as_array()) {
         for item in arr {
-            if let (Some(ip), Some(prefix)) = (
-                item.get("ipAddress").and_then(|v| v.as_str()),
-                item.get("prefixLength").and_then(|v| v.as_u64()),
-            ) {
-                let trimmed = ip.trim();
-                if !trimmed.is_empty() {
-                    ipv6_addresses.push(crate::domain::Ipv6AddressConfig {
-                        ip_address: trimmed.to_string(),
-                        prefix_length: prefix as u8,
-                    });
-                }
+            let ip_str = item
+                .get("IPAddress")
+                .or_else(|| item.get("ipAddress"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "IPv6 地址对象缺少 IPAddress/ipAddress 字段".to_string())?
+                .trim();
+            crate::domain::validate_ipv6(ip_str)?;
+            let prefix_raw = item
+                .get("PrefixLength")
+                .or_else(|| item.get("prefixLength"))
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| "IPv6 地址对象缺少 PrefixLength/prefixLength 字段".to_string())?;
+            if prefix_raw == 0 || prefix_raw > 128 {
+                return Err(format!(
+                    "IPv6 PrefixLength 超出有效范围 (1-128): {}",
+                    prefix_raw
+                ));
             }
+            ipv6_addresses.push(crate::domain::Ipv6AddressConfig {
+                ip_address: ip_str.to_string(),
+                prefix_length: prefix_raw as u8,
+                prefix_origin: item
+                    .get("PrefixOrigin")
+                    .or_else(|| item.get("prefixOrigin"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                suffix_origin: item
+                    .get("SuffixOrigin")
+                    .or_else(|| item.get("suffixOrigin"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            });
         }
     }
 
@@ -1131,18 +1153,33 @@ pub fn apply_doh_and_ipv6_internal(
     Ok(())
 }
 
+/// 判断 netsh 或系统命令输出是否表示目标对象本就不存在 (良性无需报错) (R6-02)
+fn is_not_found_output(output: &ProcessOutput) -> bool {
+    let is_not_found = |s: &str| {
+        s.contains("not found")
+            || s.contains("cannot find")
+            || s.contains("does not exist")
+            || s.contains("no matching")
+            || s.contains("找不到")
+            || s.contains("不存在")
+    };
+    is_not_found(&output.stderr.to_lowercase()) || is_not_found(&output.stdout.to_lowercase())
+}
+
 /// 执行自动回滚，并在出现任何命令失败时完整汇总返回，杜绝丢弃错误 (R-03, F-01, N-02, N-04)
 pub fn rollback_snapshot(target: &str, snapshot: &AdapterSnapshot) -> Result<(), String> {
-    rollback_snapshot_internal(target, snapshot, &[])
+    rollback_snapshot_internal(target, snapshot, &[], &[])
 }
 
 pub fn rollback_snapshot_internal(
     target: &str,
     snapshot: &AdapterSnapshot,
     touched_dns: &[String],
+    touched_ipv6_addresses: &[String],
 ) -> Result<(), String> {
     let netsh = get_system_binary("netsh.exe");
     let target_name_param = format!("name=\"{}\"", target);
+    let target_interface_param = format!("interface=\"{}\"", target);
     let mut errors = Vec::new();
 
     // 1. 恢复 IP 与网关
@@ -1406,9 +1443,63 @@ pub fn rollback_snapshot_internal(
         errors.push(format!("回滚 DoH / IPv6 状态异常: {}", e));
     }
 
-    // 恢复 IPv6 详细网络与 DNS 配置
+    // 恢复 IPv6 详细网络与 DNS 配置 (V6-02, V6-03, V6-05, R6-01)
     if snapshot.ipv6_enabled {
+        // 清理实际尝试修改的地址，包括相同 IP 的前缀/来源替换及超时的不确定写入。
+        for added_ip in touched_ipv6_addresses {
+            let res_del = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "delete",
+                    "address",
+                    &target_interface_param,
+                    added_ip,
+                ],
+                None,
+                Duration::from_secs(10),
+            );
+            match res_del {
+                Ok(out) if !out.success && !is_not_found_output(&out) => {
+                    errors.push(format!(
+                        "回滚删除本次新增静态 IPv6 地址 ({}) 失败: {}",
+                        added_ip,
+                        out.stderr.trim()
+                    ));
+                }
+                Err(e) => errors.push(format!(
+                    "执行回滚删除本次新增静态 IPv6 地址 ({}) 异常: {}",
+                    added_ip, e
+                )),
+                _ => {}
+            }
+        }
+
         if snapshot.ipv6_dhcp_enabled {
+            // 回滚至自动获取 (DHCP / SLAAC)
+            // 1. 删除可能残留的静态默认路由 ::/0 (R6-02)
+            let res_del_route = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "delete",
+                    "route",
+                    "::/0",
+                    &target_interface_param,
+                ],
+                None,
+                Duration::from_secs(10),
+            );
+            match res_del_route {
+                Ok(out) if !out.success && !is_not_found_output(&out) => {
+                    errors.push(format!("回滚删除默认路由失败: {}", out.stderr.trim()));
+                }
+                Err(e) => errors.push(format!("执行回滚删除默认路由异常: {}", e)),
+                _ => {}
+            }
+            // 2. 启用路由器发现与 DHCPv6 地址获取
             let res_v6_dhcp = run_command_with_timeout(
                 &netsh,
                 &[
@@ -1416,34 +1507,127 @@ pub fn rollback_snapshot_internal(
                     "ipv6",
                     "set",
                     "interface",
-                    &target_name_param,
+                    &target_interface_param,
                     "routerdiscovery=enabled",
+                    "managedaddress=enabled",
                 ],
                 None,
                 Duration::from_secs(15),
             );
-            if let Err(e) = res_v6_dhcp {
-                errors.push(format!("恢复 IPv6 自动获取异常: {}", e));
+            match res_v6_dhcp {
+                Ok(out) if !out.success => {
+                    errors.push(format!("恢复 IPv6 自动获取失败: {}", out.stderr.trim()))
+                }
+                Err(e) => errors.push(format!("执行恢复 IPv6 自动获取异常: {}", e)),
+                _ => {}
             }
-        } else {
-            for v6 in &snapshot.ipv6_addresses {
-                let v6_prefix_str = format!("{}/{}", v6.ip_address, v6.prefix_length);
-                let _ = run_command_with_timeout(
+            // 自动接口也可能混有手动地址；仅恢复本次触及的原手动项。
+            // DHCP/SLAAC 地址交由原自动机制重建，不能用 add address 伪造其来源。
+            for old in snapshot.ipv6_addresses.iter().filter(|a| {
+                a.is_manual()
+                    && touched_ipv6_addresses
+                        .iter()
+                        .any(|ip| crate::domain::ipv6_addr_eq(ip, &a.ip_address))
+            }) {
+                let address = format!("{}/{}", old.ip_address, old.prefix_length);
+                match run_command_with_timeout(
                     &netsh,
                     &[
                         "interface",
                         "ipv6",
                         "add",
                         "address",
-                        &target_name_param,
+                        &target_interface_param,
+                        &address,
+                    ],
+                    None,
+                    Duration::from_secs(15),
+                ) {
+                    Ok(out) if !out.success => errors.push(format!(
+                        "恢复原手动 IPv6 地址 {} 失败: {}",
+                        address,
+                        out.stderr.trim()
+                    )),
+                    Err(e) => errors.push(format!("恢复原手动 IPv6 地址 {} 异常: {}", address, e)),
+                    _ => {}
+                }
+            }
+        } else {
+            // 回滚至静态模式
+            // 1. 关闭自动获取与路由发现，恢复静态模式定义
+            let res_mode = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "interface",
+                    &target_interface_param,
+                    "routerdiscovery=disabled",
+                    "managedaddress=disabled",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            match res_mode {
+                Ok(out) if !out.success => {
+                    errors.push(format!("恢复 IPv6 静态接口模式失败: {}", out.stderr.trim()))
+                }
+                Err(e) => errors.push(format!("执行恢复 IPv6 静态接口模式异常: {}", e)),
+                _ => {}
+            }
+            // 2. 恢复原静态 IPv6 地址
+            for v6 in &snapshot.ipv6_addresses {
+                let v6_prefix_str = format!("{}/{}", v6.ip_address, v6.prefix_length);
+                let res_add = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "add",
+                        "address",
+                        &target_interface_param,
                         &v6_prefix_str,
                     ],
                     None,
                     Duration::from_secs(15),
                 );
+                match res_add {
+                    Ok(out) if !out.success => errors.push(format!(
+                        "恢复静态 IPv6 地址 ({}) 失败: {}",
+                        v6_prefix_str,
+                        out.stderr.trim()
+                    )),
+                    Err(e) => errors.push(format!(
+                        "执行恢复静态 IPv6 地址 ({}) 异常: {}",
+                        v6_prefix_str, e
+                    )),
+                    _ => {}
+                }
+            }
+            // 3. 恢复原静态默认网关 (先清理可能替换的路由，再追加原网关，R6-01, R6-02)
+            let res_del_gw = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "delete",
+                    "route",
+                    "::/0",
+                    &target_interface_param,
+                ],
+                None,
+                Duration::from_secs(10),
+            );
+            match res_del_gw {
+                Ok(out) if !out.success && !is_not_found_output(&out) => {
+                    errors.push(format!("回滚清理 IPv6 路由失败: {}", out.stderr.trim()));
+                }
+                Err(e) => errors.push(format!("执行回滚清理 IPv6 路由异常: {}", e)),
+                _ => {}
             }
             if let Some(gw) = snapshot.ipv6_gateways.first() {
-                let _ = run_command_with_timeout(
+                let res_gw = run_command_with_timeout(
                     &netsh,
                     &[
                         "interface",
@@ -1451,17 +1635,27 @@ pub fn rollback_snapshot_internal(
                         "add",
                         "route",
                         "::/0",
-                        &target_name_param,
+                        &target_interface_param,
                         gw,
                     ],
                     None,
                     Duration::from_secs(15),
                 );
+                match res_gw {
+                    Ok(out) if !out.success => errors.push(format!(
+                        "恢复 IPv6 默认网关 ({}) 失败: {}",
+                        gw,
+                        out.stderr.trim()
+                    )),
+                    Err(e) => errors.push(format!("执行恢复 IPv6 默认网关 ({}) 异常: {}", gw, e)),
+                    _ => {}
+                }
             }
         }
 
+        // 恢复 IPv6 DNS (使用 name= 参数)
         if snapshot.ipv6_dns_dhcp_enabled {
-            let _ = run_command_with_timeout(
+            let res_dns_dhcp = run_command_with_timeout(
                 &netsh,
                 &[
                     "interface",
@@ -1474,8 +1668,16 @@ pub fn rollback_snapshot_internal(
                 None,
                 Duration::from_secs(15),
             );
+            match res_dns_dhcp {
+                Ok(out) if !out.success => errors.push(format!(
+                    "恢复 IPv6 DNS 为自动获取失败: {}",
+                    out.stderr.trim()
+                )),
+                Err(e) => errors.push(format!("执行恢复 IPv6 DNS 为自动获取异常: {}", e)),
+                _ => {}
+            }
         } else if let Some(v6_d1) = snapshot.ipv6_dns_servers.first() {
-            let _ = run_command_with_timeout(
+            let res_dns1 = run_command_with_timeout(
                 &netsh,
                 &[
                     "interface",
@@ -1490,8 +1692,15 @@ pub fn rollback_snapshot_internal(
                 None,
                 Duration::from_secs(15),
             );
+            match res_dns1 {
+                Ok(out) if !out.success => {
+                    errors.push(format!("恢复首选 IPv6 DNS 失败: {}", out.stderr.trim()))
+                }
+                Err(e) => errors.push(format!("执行恢复首选 IPv6 DNS 异常: {}", e)),
+                _ => {}
+            }
             if let Some(v6_d2) = snapshot.ipv6_dns_servers.get(1) {
-                let _ = run_command_with_timeout(
+                let res_dns2 = run_command_with_timeout(
                     &netsh,
                     &[
                         "interface",
@@ -1506,6 +1715,13 @@ pub fn rollback_snapshot_internal(
                     None,
                     Duration::from_secs(15),
                 );
+                match res_dns2 {
+                    Ok(out) if !out.success => {
+                        errors.push(format!("恢复备用 IPv6 DNS 失败: {}", out.stderr.trim()))
+                    }
+                    Err(e) => errors.push(format!("执行恢复备用 IPv6 DNS 异常: {}", e)),
+                    _ => {}
+                }
             }
         }
     }
@@ -1620,6 +1836,16 @@ pub fn apply_adapter_ipv4_config_transactional(
         );
     }
 
+    if cfg.ipv6_enabled != Some(false)
+        && (ipv6_mode == "static" || (ipv6_mode == "dhcp" && !before_snapshot.ipv6_dhcp_enabled))
+        && before_snapshot
+            .ipv6_addresses
+            .iter()
+            .any(|a| !a.is_manual() && !a.is_automatic())
+    {
+        return Err("IPv6 地址来源未知或暂不支持安全恢复，已在写入前停止修改".to_string());
+    }
+
     // 前置能力检测：若系统不支持 DoH 但静态 DNS 请求了启用 DoH，在任何写入前停止 (N-09)
     if !before_snapshot.doh_supported && dns_mode == "static" {
         let doh1_active = cfg
@@ -1655,15 +1881,41 @@ pub fn apply_adapter_ipv4_config_transactional(
 
     let netsh = get_system_binary("netsh.exe");
     let name_param = format!("name=\"{}\"", cfg.adapter);
+    let interface_param = format!("interface=\"{}\"", cfg.adapter);
 
-    // 闭包：执行安全回滚并在读回后与 before_snapshot 严格比对现场真值 (F-01, N-02)
+    // 日志只在命令执行前登记，结合 before_snapshot 保存的前缀和来源恢复。
+    // RefCell 允许失败处理闭包读取日志，同时在每个可能部分生效的命令前追加。
+    let touched_ipv6_addresses = std::cell::RefCell::new(Vec::<String>::new());
+    let record_ipv6_change = |ip: &str| {
+        let mut touched = touched_ipv6_addresses.borrow_mut();
+        if !touched
+            .iter()
+            .any(|old| crate::domain::ipv6_addr_eq(old, ip))
+        {
+            touched.push(ip.to_string());
+        }
+    };
+
+    // 闭包：执行安全回滚并在读回后与 before_snapshot 严格比对现场真值 (F-01, N-02, R6-01)
     let verify_and_build_rollback_result = |failure_reason: String| -> OperationResult {
-        let rb_res = rollback_snapshot_internal(&cfg.adapter, &before_snapshot, &touched_dns);
+        let rb_res = rollback_snapshot_internal(
+            &cfg.adapter,
+            &before_snapshot,
+            &touched_dns,
+            &touched_ipv6_addresses.borrow(),
+        );
         let current_snap_after_rb = get_adapter_snapshot(&cfg.adapter).ok();
 
         let (rolled_back, rb_msg) = match (rb_res, &current_snap_after_rb) {
             (Ok(()), Some(current_snap)) => {
-                match verify_snapshot_restored(&before_snapshot, current_snap) {
+                let mut restore_check = verify_snapshot_restored(&before_snapshot, current_snap);
+                // 按修改前的前缀和来源核验实际触及项，不能仅按 IP 是否原先存在排除。
+                if restore_check.is_ok() {
+                    restore_check = crate::domain::verify_ipv6_address_rollback(
+                        &before_snapshot, current_snap, &touched_ipv6_addresses.borrow());
+                }
+
+                match restore_check {
                     Ok(()) => (
                         true,
                         format!("{failure_reason}，已自动执行安全回滚，并成功验证现场配置已完全恢复至修改前状态。"),
@@ -1839,23 +2091,64 @@ pub fn apply_adapter_ipv4_config_transactional(
         && (before_snapshot.ipv6_enabled || cfg.ipv6_enabled == Some(true))
     {
         if ipv6_mode == "static" {
+            // 切换为静态模式：显式关闭路由器发现与 DHCPv6 (V6-02, V6-03)
+            let set_mode_res = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "interface",
+                    &interface_param,
+                    "routerdiscovery=disabled",
+                    "managedaddress=disabled",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if !matches!(&set_mode_res, Ok(out) if out.success) {
+                let err = match set_mode_res {
+                    Ok(out) => format!("设置 IPv6 接口静态模式失败: {}", out.stderr.trim()),
+                    Err(e) => format!("执行设置 IPv6 接口静态模式异常: {}", e),
+                };
+                return Ok(verify_and_build_rollback_result(err));
+            }
+
             let prefix = cfg.ipv6_prefix.unwrap_or(64);
             let ip_with_prefix = format!("{}/{}", cfg.ipv6_ip.trim(), prefix);
             for old_ip in &before_snapshot.ipv6_addresses {
-                let _ = run_command_with_timeout(
+                record_ipv6_change(&old_ip.ip_address);
+                let del_res = run_command_with_timeout(
                     &netsh,
                     &[
                         "interface",
                         "ipv6",
                         "delete",
                         "address",
-                        &name_param,
+                        &interface_param,
                         &old_ip.ip_address,
                     ],
                     None,
                     Duration::from_secs(10),
                 );
+                match del_res {
+                    Ok(out) if !out.success && !is_not_found_output(&out) => {
+                        let err = format!(
+                            "删除旧 IPv6 地址 ({}) 失败: {}",
+                            old_ip.ip_address,
+                            out.stderr.trim()
+                        );
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    Err(e) => {
+                        let err =
+                            format!("执行删除旧 IPv6 地址 ({}) 异常: {}", old_ip.ip_address, e);
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    _ => {}
+                }
             }
+            record_ipv6_change(cfg.ipv6_ip.trim());
             let add_v6_res = run_command_with_timeout(
                 &netsh,
                 &[
@@ -1863,7 +2156,7 @@ pub fn apply_adapter_ipv4_config_transactional(
                     "ipv6",
                     "add",
                     "address",
-                    &name_param,
+                    &interface_param,
                     &ip_with_prefix,
                 ],
                 None,
@@ -1879,15 +2172,41 @@ pub fn apply_adapter_ipv4_config_transactional(
 
             if !cfg.ipv6_gateway.trim().is_empty() {
                 let gw = cfg.ipv6_gateway.trim();
-                let _ = run_command_with_timeout(
+                let del_gw_res = run_command_with_timeout(
                     &netsh,
-                    &["interface", "ipv6", "delete", "route", "::/0", &name_param],
+                    &[
+                        "interface",
+                        "ipv6",
+                        "delete",
+                        "route",
+                        "::/0",
+                        &interface_param,
+                    ],
                     None,
                     Duration::from_secs(10),
                 );
+                match del_gw_res {
+                    Ok(out) if !out.success && !is_not_found_output(&out) => {
+                        let err = format!("删除旧 IPv6 默认路由失败: {}", out.stderr.trim());
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    Err(e) => {
+                        let err = format!("执行删除旧 IPv6 默认路由异常: {}", e);
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    _ => {}
+                }
                 let add_gw_res = run_command_with_timeout(
                     &netsh,
-                    &["interface", "ipv6", "add", "route", "::/0", &name_param, gw],
+                    &[
+                        "interface",
+                        "ipv6",
+                        "add",
+                        "route",
+                        "::/0",
+                        &interface_param,
+                        gw,
+                    ],
                     None,
                     Duration::from_secs(15),
                 );
@@ -1901,19 +2220,63 @@ pub fn apply_adapter_ipv4_config_transactional(
             }
         } else if ipv6_mode == "dhcp" && !before_snapshot.ipv6_dhcp_enabled {
             for old_ip in &before_snapshot.ipv6_addresses {
-                let _ = run_command_with_timeout(
+                record_ipv6_change(&old_ip.ip_address);
+                let del_res = run_command_with_timeout(
                     &netsh,
                     &[
                         "interface",
                         "ipv6",
                         "delete",
                         "address",
-                        &name_param,
+                        &interface_param,
                         &old_ip.ip_address,
                     ],
                     None,
                     Duration::from_secs(10),
                 );
+                match del_res {
+                    Ok(out) if !out.success && !is_not_found_output(&out) => {
+                        let err = format!(
+                            "删除原静态 IPv6 地址 ({}) 失败: {}",
+                            old_ip.ip_address,
+                            out.stderr.trim()
+                        );
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    Err(e) => {
+                        let err = format!(
+                            "执行删除原静态 IPv6 地址 ({}) 异常: {}",
+                            old_ip.ip_address, e
+                        );
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                    _ => {}
+                }
+            }
+            // 清理可能残留的静态默认路由 ::/0 (V6-03, R6-02)
+            let del_route_res = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "delete",
+                    "route",
+                    "::/0",
+                    &interface_param,
+                ],
+                None,
+                Duration::from_secs(10),
+            );
+            match del_route_res {
+                Ok(out) if !out.success && !is_not_found_output(&out) => {
+                    let err = format!("清理残留 IPv6 静态默认路由失败: {}", out.stderr.trim());
+                    return Ok(verify_and_build_rollback_result(err));
+                }
+                Err(e) => {
+                    let err = format!("执行清理残留 IPv6 静态默认路由异常: {}", e);
+                    return Ok(verify_and_build_rollback_result(err));
+                }
+                _ => {}
             }
             let set_v6_dhcp = run_command_with_timeout(
                 &netsh,
@@ -1922,8 +2285,9 @@ pub fn apply_adapter_ipv4_config_transactional(
                     "ipv6",
                     "set",
                     "interface",
-                    &name_param,
+                    &interface_param,
                     "routerdiscovery=enabled",
+                    "managedaddress=enabled",
                 ],
                 None,
                 Duration::from_secs(15),
@@ -2150,13 +2514,16 @@ pub fn apply_adapter_ipv4_config_transactional(
                     }
                 }
 
-                // 6. IPv6 读回校验
+                // 6. IPv6 读回校验 (V6-04, V6-07)
                 if s.ipv6_enabled {
                     if ipv6_mode == "static" {
+                        if s.ipv6_dhcp_enabled {
+                            reasons.push("IPv6 自动获取/路由发现未成功关闭".to_string());
+                        }
                         let exp_ip = cfg.ipv6_ip.trim();
                         let exp_prefix = cfg.ipv6_prefix.unwrap_or(64);
                         if !s.ipv6_addresses.iter().any(|a| {
-                            a.ip_address.eq_ignore_ascii_case(exp_ip)
+                            crate::domain::ipv6_addr_eq(&a.ip_address, exp_ip)
                                 && a.prefix_length == exp_prefix
                         }) {
                             reasons.push(format!(
@@ -2164,19 +2531,71 @@ pub fn apply_adapter_ipv4_config_transactional(
                                 exp_ip, exp_prefix
                             ));
                         }
+                        // 校验原旧静态地址已被清理，杜绝删除失败导致新旧地址同时存在 (R6-02)
+                        for old_a in &before_snapshot.ipv6_addresses {
+                            if !crate::domain::ipv6_addr_eq(&old_a.ip_address, exp_ip)
+                                && s.ipv6_addresses.iter().any(|a| {
+                                    crate::domain::ipv6_addr_eq(&a.ip_address, &old_a.ip_address)
+                                })
+                            {
+                                reasons.push(format!(
+                                    "旧静态 IPv6 地址 ({}) 仍残留未被清理",
+                                    old_a.ip_address
+                                ));
+                            }
+                        }
+                        let exp_gw = cfg.ipv6_gateway.trim();
+                        if !exp_gw.is_empty()
+                            && !s
+                                .ipv6_gateways
+                                .iter()
+                                .any(|g| crate::domain::ipv6_addr_eq(g, exp_gw))
+                        {
+                            reasons.push(format!(
+                                "IPv6 默认网关未生效 (期望: {}, 实际: {:?})",
+                                exp_gw, s.ipv6_gateways
+                            ));
+                        }
                     } else if ipv6_mode == "dhcp" && !s.ipv6_dhcp_enabled {
                         reasons.push("IPv6 自动获取未开启".to_string());
                     }
 
                     if ipv6_dns_mode == "static" {
-                        if !cfg.ipv6_dns1.trim().is_empty() {
-                            let exp_d1 = cfg.ipv6_dns1.trim();
-                            if s.ipv6_dns_servers.first().map(|s| s.as_str()) != Some(exp_d1) {
-                                reasons.push(format!(
-                                    "首选 IPv6 DNS 未生效 (期望: {}, 实际: {:?})",
-                                    exp_d1,
-                                    s.ipv6_dns_servers.first()
-                                ));
+                        if s.ipv6_dns_dhcp_enabled {
+                            reasons.push("IPv6 DNS 自动获取未成功关闭".to_string());
+                        }
+                        let mut exp_dns: Vec<&str> = Vec::new();
+                        let exp_d1 = cfg.ipv6_dns1.trim();
+                        if !exp_d1.is_empty() {
+                            exp_dns.push(exp_d1);
+                        }
+                        let exp_d2 = cfg.ipv6_dns2.trim();
+                        if !exp_d2.is_empty() {
+                            exp_dns.push(exp_d2);
+                        }
+
+                        // 严格核验完整 IPv6 DNS 服务器列表数量，杜绝超出配置的额外 DNS 残留 (R6-04)
+                        if s.ipv6_dns_servers.len() != exp_dns.len() {
+                            reasons.push(format!(
+                                "IPv6 DNS 服务器数量不匹配 (期望: {}, 实际: {:?})",
+                                exp_dns.len(),
+                                s.ipv6_dns_servers
+                            ));
+                        } else {
+                            for (idx, &exp) in exp_dns.iter().enumerate() {
+                                let actual = s
+                                    .ipv6_dns_servers
+                                    .get(idx)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("");
+                                if !crate::domain::ipv6_addr_eq(actual, exp) {
+                                    reasons.push(format!(
+                                        "第 {} 位 IPv6 DNS 未生效 (期望: {}, 实际: {:?})",
+                                        idx + 1,
+                                        exp,
+                                        s.ipv6_dns_servers.get(idx)
+                                    ));
+                                }
                             }
                         }
                     } else if ipv6_dns_mode == "dhcp" && !s.ipv6_dns_dhcp_enabled {

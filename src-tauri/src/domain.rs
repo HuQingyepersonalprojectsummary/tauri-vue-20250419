@@ -41,6 +41,72 @@ pub struct Ipv6AddressConfig {
     pub ip_address: String,
     /// 网络前缀长度 (1..=128，通常为 64)
     pub prefix_length: u8,
+    /// Windows 地址来源；旧快照缺失时保留未知，不能推断为手动地址。
+    #[serde(default)]
+    pub prefix_origin: String,
+    #[serde(default)]
+    pub suffix_origin: String,
+}
+
+impl Ipv6AddressConfig {
+    pub fn is_manual(&self) -> bool {
+        self.prefix_origin.eq_ignore_ascii_case("Manual")
+            && self.suffix_origin.eq_ignore_ascii_case("Manual")
+    }
+
+    pub fn is_automatic(&self) -> bool {
+        (self.prefix_origin.eq_ignore_ascii_case("Dhcp")
+            && self.suffix_origin.eq_ignore_ascii_case("Dhcp"))
+            || (self
+                .prefix_origin
+                .eq_ignore_ascii_case("RouterAdvertisement")
+                && ["Link", "Random"]
+                    .iter()
+                    .any(|s| self.suffix_origin.eq_ignore_ascii_case(s)))
+            || (self.prefix_origin.eq_ignore_ascii_case("WellKnown")
+                && self.suffix_origin.eq_ignore_ascii_case("Link"))
+    }
+}
+
+/// 对照修改前的完整地址状态核验实际触及的项；自动地址可重新分配，手动写入必须撤销。
+pub fn verify_ipv6_address_rollback(
+    before: &AdapterSnapshot,
+    current: &AdapterSnapshot,
+    touched: &[String],
+) -> Result<(), String> {
+    for ip in touched {
+        let original = before
+            .ipv6_addresses
+            .iter()
+            .find(|a| ipv6_addr_eq(&a.ip_address, ip));
+        let actual: Vec<_> = current
+            .ipv6_addresses
+            .iter()
+            .filter(|a| ipv6_addr_eq(&a.ip_address, ip))
+            .collect();
+        match original {
+            Some(old) if old.is_manual() => {
+                if actual.len() != 1
+                    || actual[0].prefix_length != old.prefix_length
+                    || !actual[0].is_manual()
+                {
+                    return Err(format!(
+                        "原手动 IPv6 地址 {}/{} 的前缀或来源未恢复",
+                        ip, old.prefix_length
+                    ));
+                }
+            }
+            Some(old) if !old.is_automatic() => {
+                return Err(format!("IPv6 地址 {} 的原始来源未知，无法确认恢复", ip))
+            }
+            _ => {
+                if actual.iter().any(|a| !a.is_automatic()) {
+                    return Err(format!("本次手动 IPv6 地址 {} 仍残留或来源无法核实", ip));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// DNS over HTTPS (DoH) 加密解析配置项
@@ -338,12 +404,40 @@ pub fn validate_ipv6_prefix(prefix: u8) -> Result<(), String> {
     Ok(())
 }
 
-/// 校验 IPv6 DNS 配置组合（不允许未配置首选 DNS 而单独配置辅助 DNS）
+/// 解析 IPv6 地址字符串，分离基础 IP 地址与可选 Scope/Zone ID
+pub fn parse_ipv6_with_scope(s: &str) -> Option<(Ipv6Addr, Option<&str>)> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (ip_part, scope_part) = match trimmed.split_once('%') {
+        Some((ip, scope)) => (ip.trim(), Some(scope.trim())),
+        None => (trimmed, None),
+    };
+    let ip = ip_part.parse::<Ipv6Addr>().ok()?;
+    Some((ip, scope_part.filter(|s| !s.is_empty())))
+}
+
+/// 规范化比对两个 IPv6 地址是否在网络语义上完全等价 (V6-07)
+///
+/// 支持解析并比对包含 Scope ID (如 fe80::1%12)、零压缩 (2001:db8::20 与 2001:0db8:0:0:0:0:0:20) 以及大小写无关性。
+pub fn ipv6_addr_eq(a: &str, b: &str) -> bool {
+    match (parse_ipv6_with_scope(a), parse_ipv6_with_scope(b)) {
+        (Some((ip_a, scope_a)), Some((ip_b, scope_b))) => {
+            ip_a == ip_b
+                && scope_a.map(|s| s.to_ascii_lowercase())
+                    == scope_b.map(|s| s.to_ascii_lowercase())
+        }
+        _ => a.trim().eq_ignore_ascii_case(b.trim()),
+    }
+}
+
+/// 手动 IPv6 DNS 必须填写首选 DNS；保留现有配置应使用 keep 模式。
 pub fn validate_ipv6_dns_combination(dns1: &str, dns2: &str) -> Result<(), String> {
     let d1 = dns1.trim();
     let d2 = dns2.trim();
-    if d1.is_empty() && !d2.is_empty() {
-        return Err("若配置 IPv6 辅助 DNS，必须先配置 IPv6 首选 DNS (DNS1)".to_string());
+    if d1.is_empty() {
+        return Err("手动 IPv6 DNS 必须填写首选 DNS (DNS1)，如不修改请选择保持现状".to_string());
     }
     if !d1.is_empty() {
         validate_ipv6(d1)?;
@@ -559,10 +653,18 @@ pub fn verify_snapshot_restored(
                 before.ipv6_dns_dhcp_enabled, current.ipv6_dns_dhcp_enabled
             ));
         }
-        if !before.ipv6_dhcp_enabled && !before.ipv6_addresses.is_empty() {
+        if !before.ipv6_dhcp_enabled {
+            // 核验地址数量完全一致，拒绝额外地址残留 (V6-05)
+            if before.ipv6_addresses.len() != current.ipv6_addresses.len() {
+                return Err(format!(
+                    "IPv6 地址列表数量未恢复 (期望: {}, 实际: {})",
+                    before.ipv6_addresses.len(),
+                    current.ipv6_addresses.len()
+                ));
+            }
             for exp in &before.ipv6_addresses {
                 if !current.ipv6_addresses.iter().any(|a| {
-                    a.ip_address.eq_ignore_ascii_case(&exp.ip_address)
+                    ipv6_addr_eq(&a.ip_address, &exp.ip_address)
                         && a.prefix_length == exp.prefix_length
                 }) {
                     return Err(format!(
@@ -571,15 +673,64 @@ pub fn verify_snapshot_restored(
                     ));
                 }
             }
+            for cur in &current.ipv6_addresses {
+                if !before.ipv6_addresses.iter().any(|a| {
+                    ipv6_addr_eq(&a.ip_address, &cur.ip_address)
+                        && a.prefix_length == cur.prefix_length
+                }) {
+                    return Err(format!(
+                        "存在残留的未恢复 IPv6 地址 ({}/{})",
+                        cur.ip_address, cur.prefix_length
+                    ));
+                }
+            }
         }
-        if !before.ipv6_dns_dhcp_enabled
-            && !before.ipv6_dns_servers.is_empty()
-            && before.ipv6_dns_servers != current.ipv6_dns_servers
-        {
+        // 核验 IPv6 默认网关列表恢复 (V6-04, V6-05)
+        if before.ipv6_gateways.len() != current.ipv6_gateways.len() {
             return Err(format!(
-                "IPv6 DNS 服务器列表未恢复 (期望: {:?}, 实际: {:?})",
-                before.ipv6_dns_servers, current.ipv6_dns_servers
+                "IPv6 默认网关数量未恢复 (期望: {}, 实际: {})",
+                before.ipv6_gateways.len(),
+                current.ipv6_gateways.len()
             ));
+        }
+        for (idx, exp_gw) in before.ipv6_gateways.iter().enumerate() {
+            let cur_gw = current
+                .ipv6_gateways
+                .get(idx)
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            if !ipv6_addr_eq(exp_gw, cur_gw) {
+                return Err(format!(
+                    "第 {} 位 IPv6 默认网关未恢复 (期望: {}, 实际: {:?})",
+                    idx + 1,
+                    exp_gw,
+                    current.ipv6_gateways.get(idx)
+                ));
+            }
+        }
+        if !before.ipv6_dns_dhcp_enabled {
+            if before.ipv6_dns_servers.len() != current.ipv6_dns_servers.len() {
+                return Err(format!(
+                    "IPv6 DNS 服务器数量未恢复 (期望: {}, 实际: {})",
+                    before.ipv6_dns_servers.len(),
+                    current.ipv6_dns_servers.len()
+                ));
+            }
+            for (idx, exp_dns) in before.ipv6_dns_servers.iter().enumerate() {
+                let cur_dns = current
+                    .ipv6_dns_servers
+                    .get(idx)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                if !ipv6_addr_eq(exp_dns, cur_dns) {
+                    return Err(format!(
+                        "第 {} 位 IPv6 DNS 服务器未恢复 (期望: {}, 实际: {:?})",
+                        idx + 1,
+                        exp_dns,
+                        current.ipv6_dns_servers.get(idx)
+                    ));
+                }
+            }
         }
     }
 
@@ -979,6 +1130,8 @@ mod tests {
         before_v6_static.ipv6_addresses = vec![Ipv6AddressConfig {
             ip_address: "2001:db8::1".into(),
             prefix_length: 64,
+            prefix_origin: "Manual".into(),
+            suffix_origin: "Manual".into(),
         }];
         let mut act_v6_missing = before_v6_static.clone();
         act_v6_missing.ipv6_addresses = vec![];
@@ -991,6 +1144,67 @@ mod tests {
         let mut act_v6_dns_empty = before_v6_dns.clone();
         act_v6_dns_empty.ipv6_dns_servers = vec![];
         assert!(verify_snapshot_restored(&before_v6_dns, &act_v6_dns_empty).is_err());
+
+        // 15. IPv6 恢复时存在残留额外静态地址或网关不一致 (V6-05)
+        let mut act_v6_extra = before_v6_static.clone();
+        act_v6_extra.ipv6_addresses.push(Ipv6AddressConfig {
+            ip_address: "2001:db8::99".into(),
+            prefix_length: 64,
+            prefix_origin: "Manual".into(),
+            suffix_origin: "Manual".into(),
+        });
+        assert!(verify_snapshot_restored(&before_v6_static, &act_v6_extra).is_err());
+
+        let mut before_v6_gw = before_v6_static.clone();
+        before_v6_gw.ipv6_gateways = vec!["fe80::1".into()];
+        let mut act_v6_wrong_gw = before_v6_gw.clone();
+        act_v6_wrong_gw.ipv6_gateways = vec!["fe80::bad".into()];
+        assert!(verify_snapshot_restored(&before_v6_gw, &act_v6_wrong_gw).is_err());
+
+        // 16. 等价 IPv6 规范化比较应通过 (V6-07)
+        let mut act_v6_equiv = before_v6_gw.clone();
+        act_v6_equiv.ipv6_addresses = vec![Ipv6AddressConfig {
+            ip_address: "2001:0db8:0000:0000:0000:0000:0000:0001".into(),
+            prefix_length: 64,
+            prefix_origin: "Manual".into(),
+            suffix_origin: "Manual".into(),
+        }];
+        assert!(verify_snapshot_restored(&before_v6_gw, &act_v6_equiv).is_ok());
+
+        // 17. IPv6 DNS 服务器数量不一致拦截 (R6-04)
+        let mut before_v6_2dns = before_v6_static.clone();
+        before_v6_2dns.ipv6_dns_dhcp_enabled = false;
+        before_v6_2dns.ipv6_dns_servers = vec!["2001:db8::54".into(), "2001:db8::55".into()];
+        let mut act_v6_3dns = before_v6_2dns.clone();
+        act_v6_3dns.ipv6_dns_servers.push("2001:db8::56".into());
+        assert!(verify_snapshot_restored(&before_v6_2dns, &act_v6_3dns).is_err());
+
+        // RR6-01: 自动接口中的手动地址也必须恢复前缀及来源。
+        let mut mixed = before_v6_static.clone();
+        mixed.ipv6_dhcp_enabled = true;
+        let touched = vec!["2001:db8::1".to_string()];
+        let mut replaced = mixed.clone();
+        replaced.ipv6_addresses[0].prefix_length = 80;
+        assert!(verify_ipv6_address_rollback(&mixed, &replaced, &touched).is_err());
+        assert!(verify_ipv6_address_rollback(&mixed, &mixed, &touched).is_ok());
+        replaced.ipv6_addresses.clear();
+        assert!(verify_ipv6_address_rollback(&mixed, &replaced, &touched).is_err());
+
+        // 同 IP、同前缀但自动来源被手动替换也必须失败。
+        let mut automatic = mixed.clone();
+        automatic.ipv6_addresses[0].prefix_origin = "RouterAdvertisement".into();
+        automatic.ipv6_addresses[0].suffix_origin = "Random".into();
+        assert!(verify_ipv6_address_rollback(&automatic, &mixed, &touched).is_err());
+        assert!(verify_ipv6_address_rollback(&automatic, &automatic, &touched).is_ok());
+        // 自动地址消失/重新分配不能被误判为手动配置残留。
+        assert!(verify_ipv6_address_rollback(&automatic, &replaced, &touched).is_ok());
+        replaced.ipv6_addresses = automatic.ipv6_addresses.clone();
+        replaced.ipv6_addresses[0].ip_address = "2001:db8::abcd".into();
+        assert!(verify_ipv6_address_rollback(&automatic, &replaced, &touched).is_ok());
+        let mut unknown = mixed.clone();
+        unknown.ipv6_addresses[0].prefix_origin.clear();
+        assert!(verify_ipv6_address_rollback(&unknown, &mixed, &touched).is_err());
+        assert!(verify_ipv6_address_rollback(&automatic, &unknown, &touched).is_err());
     }
 
     #[test]
@@ -1055,10 +1269,19 @@ mod tests {
         assert!(validate_ipv6_prefix(129).is_err());
 
         // validate_ipv6_dns_combination
-        assert!(validate_ipv6_dns_combination("", "").is_ok());
+        assert!(validate_ipv6_dns_combination("", "").is_err());
+        assert!(validate_ipv6_dns_combination("  ", "\t").is_err());
         assert!(validate_ipv6_dns_combination("2400:3200::1", "").is_ok());
         assert!(validate_ipv6_dns_combination("2400:3200::1", "2400:3200:baba::1").is_ok());
         assert!(validate_ipv6_dns_combination("", "2400:3200::1").is_err());
         assert!(validate_ipv6_dns_combination("invalid", "").is_err());
+
+        // ipv6_addr_eq (V6-07)
+        assert!(ipv6_addr_eq("2001:db8::1", "2001:0db8:0:0:0:0:0:1"));
+        assert!(ipv6_addr_eq("2001:db8::20", "2001:0db8:0:0:0:0:0:20"));
+        assert!(ipv6_addr_eq("fe80::1%12", "FE80::1%12"));
+        assert!(ipv6_addr_eq("::1", "0:0:0:0:0:0:0:1"));
+        assert!(!ipv6_addr_eq("2001:db8::1", "2001:db8::2"));
+        assert!(!ipv6_addr_eq("fe80::1%12", "fe80::1%13"));
     }
 }

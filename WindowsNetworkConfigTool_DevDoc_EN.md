@@ -1,200 +1,123 @@
-# 🛠️ WindowsNetworkConfigTool_DevDoc_EN.md
+# Windows Network Configuration Tool — Developer Guide
 
-# 📝 Windows Network Configuration Tool - Developer Documentation (English)
+Updated 2026-09-10 for the current 0.1.0 source and Windows x64 build. The [Chinese guide](./WindowsNetworkConfigTool_DevDoc_CN.md) covers the same implementation.
 
-## 🏁 1. Project Overview
+## 1. Environment and dependencies
 
-This project is built using [Tauri](https://tauri.app/) (Rust) + [Vue 3](https://vuejs.org/) (TypeScript), designed to provide a secure, intuitive, and highly reliable network adapter configuration tool for Windows.
-Users can view and configure:
-- **IPv4 Address & Subnet Mask** (with strict non-leading-zero checks and contiguous binary mask validation).
-- **Default Gateway** (with subnet reachability validation).
-- **DNS Servers** (Primary and Secondary DNS dependency checks).
-- **DNS over HTTPS (DoH)** (Off, Auto, Manual template URL, and unencrypted UDP fallback toggle).
-- **IPv6 Protocol Component Binding** (Safely enable or disable adapter `ms_tcpip6` binding).
-- **Public DNS & DoH Presets** (One-click fill for AliDNS, DNSPod, Cloudflare, and Google).
-- **Secure Persistent History** (Versioned schema, max 10 records, independent storage fault isolation).
+This build was checked with Node.js 24.16.0, Rust/Cargo 1.91.1, PowerShell 7 and the Windows MSVC toolchain. Install Visual Studio C++ build tools and a Windows SDK. The desktop application requires Microsoft Edge WebView2 Runtime. These are observed build versions, not a claim that every earlier toolchain was tested.
 
----
+The frontend lock resolves Vue 3.5.13, Vite 6.4.3, TypeScript 5.8.3, Tauri API 1.6.0 and Tauri CLI 1.6.3. Cargo.lock records exact Rust dependencies. Read lockfiles rather than assuming package.json range lower bounds are installed versions.
 
-## 2. Architecture & Safety Guarantees
-
-```mermaid
-flowchart TD
-  UI[Vue 3 Frontend GUI] -->|Typed IPC| IPC[Tauri Commands]
-  IPC -->|Sequential Write Lock NetworkLock| S[Transaction Orchestration & Validation domain.rs]
-  S -->|stdin JSON Injection-Free Pipe| P[PowerShell Snapshot Query: IPv4 + IPv6 + DoH]
-  S -->|Trusted System32 Executables| N[netsh.exe IPv4 & Gateway Application]
-  S -->|Trusted System32 Executables| D[PowerShell DoH & IPv6 Binding Application]
-  D -->|Verification Mismatch or Error| R[Automatic Transactional Rollback to Initial Snapshot]
-  D -->|Verification Match Confirmed| V[Return Success to Frontend]
+```powershell
+npx --yes yarn@1.22.22 install --frozen-lockfile
+cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+npm run tauri -- dev
 ```
 
-### 2.1 Technology Stack
-- **Frontend**: Vue 3 Composition API (`<script setup lang="ts">`) + TypeScript + Vite, featuring responsive layout, accessible controls, and Windows 11 Fluent-style toggles.
-- **Backend / Desktop Container**: Tauri 1 (Rust), enforcing separation of executable code and data parameters, compiled as a native lightweight Windows executable.
+Use Yarn Classic for dependency installation; npm is used to run scripts. Do not introduce a second package-lock.json. Offline Cargo checks require a populated cache. Vite uses port 3000 and fails if the port is occupied. Running npm run dev alone provides a browser UI without native IPC.
 
-### 2.2 Core Safety & Reliability Features
-- **Anti-Code-Injection (A-01)**: All system command executions utilize static, invariant scripts. Arguments are serialized as JSON and passed via standard input (`stdin`), completely eliminating PowerShell script concatenation vulnerabilities.
-- **Trusted System32 Paths (A-12)**: Executables are strictly resolved using absolute system directories (`SystemRoot\System32\powershell.exe`, `netsh.exe`), eliminating PATH hijacking risks.
-- **Transactional Rollback & Read-Back Verification (A-03)**: Captures a complete snapshot before any modification. After changes are applied, it continuously polls and reads back the system state. If any step fails or read-back verification fails, it restores the previous state atomically.
-- **Global Mutex & Async Task Management (A-04)**: Protects all write operations using an in-process `NetworkLock` and a Windows named mutex to prevent concurrent write collisions.
-- **Strict Semantic Network Validation (A-06)**: Validates standard IPv4 octets (no leading zeros), contiguous subnet masks, gateway in-subnet validity, and HTTPS protocol compliance for DoH templates.
-- **Adapter Draft Isolation (A-08)**: Keeps distinct form drafts per adapter name to eliminate accidental cross-adapter overwrites.
-- **Fault-Tolerant History Storage (A-09, A-10)**: Strict JSON schema validation (`schemaVersion: 1`). Corrupt records are isolated, and storage errors never falsely flag network configuration failures.
+## 2. Module boundaries
 
----
+| Path | Responsibility |
+|---|---|
+| src/App.vue | Adapter selection, forms, DNS presets, history and status |
+| src/composables/useNetworkConfig.ts | Current snapshot, per-adapter drafts, request sequencing, validation and apply |
+| src/composables/useConfigHistory.ts | Versioned local history and independent storage warnings |
+| src/services/networkClient.ts | Typed invoke wrappers |
+| src/types/network.ts | Frontend DTOs |
+| src/utils/validation.ts | IPv4, subnet, gateway and IPv6 validators |
+| src-tauri/src/lib.rs | IPC registration, blocking task offload and write locks |
+| src-tauri/src/domain.rs | Rust DTOs, validation and restoration verification |
+| src-tauri/src/platform.rs | Trusted executables, process runner, snapshots, writes and compensation |
+| src-tauri/src/main.rs | Desktop entry point and release GUI subsystem |
+| src-tauri/tauri.conf.json | Product/version, window, security and installer configuration |
+| tests/regression/ipv6 | Isolated production-code fault injection |
+| scripts | Packaging and artifact export |
+| releases | Portable executable, installers, checksums and source fingerprints |
 
-## 3. Project Structure
+Keep domain validation independent of OS IO. Add native operations in platform, route frontend calls through networkClient, and preserve separate network, recovery and storage failure states.
 
-```
-├── src/
-│   ├── types/
-│   │   └── network.ts            # DTO interface definitions (DohConfig, AdapterSnapshot)
-│   ├── utils/
-│   │   └── validation.ts         # IPv4, contiguous subnet mask, and gateway validation
-│   ├── services/
-│   │   └── networkClient.ts      # Typed Tauri IPC wrapper
-│   ├── composables/
-│   │   ├── useNetworkConfig.ts   # Adapter state, DoH/IPv6 draft isolation & apply logic
-│   │   └── useConfigHistory.ts   # Local history validation, persistence & error isolation
-│   ├── App.vue                   # UI layout, Fluent switches, and preset chips
-│   └── main.ts                   # Vue application entry point
-├── src-tauri/
-│   ├── src/
-│   │   ├── domain.rs             # Domain models, DoH/IPv4 algorithms & unit tests
-│   │   ├── platform.rs           # Trusted paths, DoH/IPv6 management & rollback
-│   │   ├── lib.rs                # Tauri command registration & write locks
-│   │   └── main.rs               # Rust backend entry point
-│   └── tauri.conf.json           # Tauri configuration with CSP security
-├── docs/                         # Security audit and refactoring reports
-├── releases/                     # Output directory for standalone portable executables
-├── package.json                  # Dependencies and build scripts
-├── vite.config.ts                # Vite configuration
-├── build-app.bat                 # One-click Windows build batch script
-├── 打包说明.md                   # Packaging guide (portable & installer)
-└── README.md                     # Project summary
-```
+## 3. IPC contract
 
----
+Rust serde uses camelCase. Rust and TypeScript DTOs are maintained manually: update both definitions, snapshot parsing, callers and fixtures when fields change.
 
-## 4. API Interface Contracts
+| Command | invoke arguments | Result |
+|---|---|---|
+| get_network_adapters | none | AdapterInfo[] |
+| get_current_config | `{ adapterName }` | AdapterSnapshot |
+| apply_adapter_ipv4_config | `{ cfg }` | OperationResult |
+| greet | `{ name }` | Legacy template greeting, unrelated to network configuration |
 
-### 4.1 Get Network Adapters
-- **Command**: `get_network_adapters`
-- **Input**: None
-- **Output**: `Vec<AdapterInfo>`
+The apply command retains its historical IPv4 name but also handles IPv6, DNS and DoH.
+
+### Configuration intent
+
+- adapter selects the interface by name. Expected identity/version checking at edit time is not yet implemented.
+- ipMode and dnsMode accept keep, dhcp or static. Missing values retain legacy inference from IPv4 fields; new callers should send explicit modes.
+- Static IPv4 requires ip and mask. A non-empty gateway must be in the same subnet. DNS2 requires DNS1. Empty static IPv4 DNS restoration still has limitations.
+- doh1 and doh2 describe the corresponding IPv4 DNS server: off/auto/manual, template and allowFallback. DoH server entries have system-wide scope.
+- Missing ipv6Enabled preserves the binding. Explicit true/false changes it.
+- ipv6Mode and ipv6DnsMode accept keep/dhcp/static; missing values mean keep. Do not infer missing history intent from an adapter snapshot.
+- ipv6Ip, ipv6Prefix and ipv6Gateway describe a static address. Prefixes are 1–128; the backend defaults an omitted prefix to 64.
+- Static ipv6DnsMode requires non-blank ipv6Dns1; ipv6Dns2 is optional. Empty, whitespace-only and secondary-only requests fail before any system write.
+
+Example that only changes IPv6 DNS:
+
 ```typescript
-interface AdapterInfo {
-  name: string;             // Adapter name (e.g. "Ethernet", "Wi-Fi")
-  status: string;           // Formatted user-friendly status
-  rawStatus?: string;       // Raw system status (Up, Disconnected, etc.)
-  displayName?: string;     // Hardware device description
-  interfaceIndex?: number;  // Interface index
-  interfaceGuid?: string;   // Unique interface GUID
-}
+await networkClient.applyAdapterIpv4Config({
+  adapter: 'Ethernet',
+  ipMode: 'keep', dnsMode: 'keep',
+  ip: '', mask: '', gateway: '', dns1: '', dns2: '',
+  ipv6Mode: 'keep', ipv6DnsMode: 'static',
+  ipv6Dns1: '2001:db8::53', ipv6Dns2: ''
+});
 ```
 
-### 4.2 Get Current Adapter Snapshot
-- **Command**: `get_current_config`
-- **Input**: `{ adapterName: string }`
-- **Output**: `AdapterSnapshot`
-```typescript
-interface DohConfig {
-  mode: 'off' | 'auto' | 'manual'; // DoH mode
-  template: string;                // HTTPS query template URL
-  allowFallback: boolean;          // Allow fallback to unencrypted UDP
-}
+The address is for documentation; replace it with the intended resolver.
 
-interface AdapterSnapshot {
-  adapterName: string;
-  interfaceIndex: number;
-  interfaceGuid: string;
-  status: string;
-  dhcpEnabled: boolean;
-  addresses: { ipAddress: string; prefixLength: number; mask: string }[];
-  gateways: string[];
-  dnsServers: string[];
-  ip: string;
-  mask: string;
-  gateway: string;
-  dns1: string;
-  dns2: string;
-  doh1?: DohConfig;       // Primary DNS DoH configuration
-  doh2?: DohConfig;       // Secondary DNS DoH configuration
-  ipv6Enabled?: boolean;  // IPv6 binding status (ms_tcpip6)
-}
-```
+### Snapshots and outcomes
 
-### 4.3 Apply Network Configuration Transactionally
-- **Command**: `apply_adapter_ipv4_config`
-- **Input**: `{ cfg: Ipv4Config }`
-```typescript
-interface Ipv4Config {
-  adapter: string;
-  ip: string;
-  mask: string;
-  gateway: string;        // Optional default gateway
-  dns1: string;           // Optional primary DNS
-  dns2: string;           // Optional secondary DNS
-  doh1?: DohConfig;       // Optional primary DoH
-  doh2?: DohConfig;       // Optional secondary DoH
-  ipv6Enabled?: boolean;  // Optional IPv6 protocol binding switch
-}
-```
-- **Output**: `OperationResult`
-```typescript
-interface OperationResult {
-  success: boolean;            // Whether application & verification succeeded
-  message: string;            // Detailed status message
-  rolledBack: boolean;        // Whether automatic rollback was triggered
-  rollbackMessage?: string;   // Description of rollback status
-  snapshot?: AdapterSnapshot; // Verified snapshot after change
-}
-```
+AdapterSnapshot contains identity, status, IPv4 addresses/gateways/DNS, DoH and IPv6 state. Each IPv6 address includes ipAddress, prefixLength, prefixOrigin and suffixOrigin. Missing origin stays unknown; it must never be inferred as Manual.
 
----
+OperationResult.success means the requested changes passed read-back verification. message preserves the outcome or initial error. rolledBack means compensation commands and restoration verification both passed, not merely that rollback was attempted. rollbackMessage must be shown on failure. snapshot may be null if the final state could not be read; clear stale UI state in that case.
 
-## 5. Development & Build
+Preflight failures can reject the IPC Promise. Failures after writes generally return success=false and a recovery diagnosis. Handle both paths.
 
-### 5.1 Install Dependencies
-```bash
-npm install
-# Or with yarn:
-# yarn install
-```
+## 4. Transaction and recovery
 
-### 5.2 Local Development (Frontend + Tauri Desktop Window)
-```bash
-npm run tauri dev
-```
+1. IPC offloads OS work to spawn_blocking and serializes writes with an in-process lock and Windows named mutex.
+2. Validate inputs, obtain the original snapshot and check adapter state, DoH capability and IPv6 address origins before writes.
+3. Apply only the explicitly requested IPv4, extension and IPv6 modes. keep skips the corresponding write.
+4. Record every attempted IPv6 address deletion/addition before execution. Combine this journal with the immutable original snapshot to retain the original prefix and origin. Timeouts may represent partially completed writes.
+5. Read back and compare the result, including normalized IPv6 addresses and complete ordered DNS lists.
+6. On failure, clean up touched IPv6 addresses, including replacements of the same IP. Restore original manual addresses with their original prefix, even on an otherwise automatic interface. Let DHCP/SLAAC recreate automatic addresses rather than adding manual substitutes.
+7. Verify restoration. Cleanup failures, manual residue, changed manual prefixes or unknown origins prevent rolledBack=true. Automatic address churn is allowed.
 
-### 5.3 Frontend Only (Web Debugging)
-```bash
-npm run dev
-```
+This is command-by-command compensation, not an atomic OS transaction or a guarantee of uninterrupted connectivity. The transaction journal is in memory and cannot resume after a crash. Route properties, address lifetimes and complex multi-address/gateway/DNS restoration remain documented limitations.
 
-### 5.4 Type Checking & Frontend Build
-```bash
+## 5. Processes, permissions and state
+
+PowerShell receives JSON through stdin and uses fixed scripts; netsh receives separate arguments. Resolve executables from trusted system directories. The runner applies CREATE_NO_WINDOW, timeouts and Windows Job Object management. Job creation/assignment failures and termination confirmation still require work. A Global mutex timeout does not fall back to Local, while the access-denied fallback remains an isolation limitation.
+
+There is no on-demand elevated helper or requireAdministrator application manifest. Users must run the application as administrator to write network settings. An installer's UAC request does not establish that the application elevates automatically.
+
+Snapshots and form state are separate. Request sequencing suppresses stale query responses. Per-adapter drafts live in memory for the current run. History is stored under net_config_history_v1 in WebView localStorage, uses schemaVersion 1 and retains at most 10 records. Invalid entries are filtered; persistence failures do not change the network operation result. History is not a full system backup.
+
+## 6. Verification and release
+
+```powershell
 npm run typecheck
-npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
+npm run test:regression
+npm run release
 ```
 
-### 5.5 Backend Tests
-```bash
-cd src-tauri
-cargo test
-cargo check
-```
+Regression probes execute current production transaction logic, actual Vue composables and extracted PowerShell scripts with controlled IO. Results go to the ignored tests/regression/ipv6/output directory; any failed probe/assertion exits nonzero. Keep extraction boundaries synchronized when production functions move.
 
-### 5.6 Build Release Portable Executable
-Run the batch file in the root folder:
-```cmd
-build-app.bat
-```
-Or execute:
-```bash
-npm run build
-cd src-tauri && cargo build --release
-```
-The output binary will be located at:
-`src-tauri/target/release/tauri-vue-20250419.exe`.
+The release script builds frontend resources, the executable, MSI and NSIS, verifies artifact freshness, then exports artifacts and hashes. See the [packaging guide](./打包说明.md). The current release is unsigned, x64, with a WebView2 download-bootstrapper installer policy. Native UI, real network changes, UAC and installation/uninstallation still require acceptance testing.
+
+Synchronize package.json, Cargo.toml, the application entry in Cargo.lock and tauri.conf.json when changing the version. Update the applicable lockfile when changing dependencies. Before pushing, verify docs, source fingerprints and artifact checksums, then use a normal fast-forward push.
+
+Repeated dated audit reports and raw logs have been consolidated into [verification](./docs/verification.md) and [known limitations](./docs/known-limitations.md). Reusable probes now live under tests. Removing historical reports does not close unresolved findings.
