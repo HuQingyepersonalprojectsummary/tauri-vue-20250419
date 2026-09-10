@@ -407,17 +407,23 @@ try {
 
 $dns = @()
 try {
-    $dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 | Select-Object -ExpandProperty ServerAddresses)
+    $dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop | Select-Object -ExpandProperty ServerAddresses)
 } catch {
-    throw "查询 DNS 服务器异常: $_"
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound') {
+        throw "查询 DNS 服务器异常: $_"
+    }
 }
 
 $dhcp = $false
 try {
-    $ipIf = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4
-    $dhcp = ($ipIf.Dhcp -eq 'Enabled')
+    $ipIf = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop
+    if ($ipIf) {
+        $dhcp = ($ipIf.Dhcp -eq 'Enabled')
+    }
 } catch {
-    throw "查询 DHCP 状态异常: $_"
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound') {
+        throw "查询 DHCP 状态异常: $_"
+    }
 }
 
 # 判定 DNS 是否由 DHCP 分配（查询注册表 NameServer 静态服务器）
@@ -495,20 +501,24 @@ try {
 # 查询 IPv6 DNS 服务器
 $ipv6Dns = @()
 try {
-    $ipv6Dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Select-Object -ExpandProperty ServerAddresses)
+    $ipv6Dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction Stop | Select-Object -ExpandProperty ServerAddresses)
 } catch {
-    throw "查询 IPv6 DNS 服务器异常: $_"
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound') {
+        throw "查询 IPv6 DNS 服务器异常: $_"
+    }
 }
 
 # 查询 IPv6 DHCP / SLAAC 状态
 $ipv6Dhcp = $true
 try {
-    $ipIf6 = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6
+    $ipIf6 = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction Stop
     if ($ipIf6) {
         $ipv6Dhcp = ($ipIf6.Dhcp -eq 'Enabled' -or $ipIf6.RouterDiscovery -eq 'Enabled')
     }
 } catch {
-    throw "查询 IPv6 DHCP 状态异常: $_"
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230|ElementNotFound') {
+        throw "查询 IPv6 DHCP 状态异常: $_"
+    }
 }
 
 # 判定 IPv6 DNS 是否为自动获取
