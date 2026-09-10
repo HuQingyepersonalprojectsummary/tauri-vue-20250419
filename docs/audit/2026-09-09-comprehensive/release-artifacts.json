@@ -1,0 +1,14 @@
+[
+  {
+    "file": "Windows_IPv4_Config_Tool_v0.1.0.exe",
+    "size": 2020352,
+    "sha256": "3F9F981F7FD980408EB2C043906F66DE779FD797B7DFA276512C9CFFF3A295DF",
+    "signature": "NotSigned"
+  },
+  {
+    "file": "Windows_Network_Config_Tool_v0.1.0.exe",
+    "size": 2020352,
+    "sha256": "3F9F981F7FD980408EB2C043906F66DE779FD797B7DFA276512C9CFFF3A295DF",
+    "signature": "NotSigned"
+  }
+]

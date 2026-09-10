@@ -1,0 +1,434 @@
+[
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[{\"allowFallback\":false,\"mode\":\"manual\",\"serverIp\":\"198.51.100.53\",\"template\":\"https://expected.example/dns-query\"}],\"ipv6Enabled\":true}"
+      }
+    ],
+    "case": "wrong_doh_template_and_fallback",
+    "reads": 2,
+    "result": {
+      "Ok": {
+        "message": "网络配置已成功应用并通过读回校验",
+        "rollbackMessage": null,
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [
+            {
+              "ipAddress": "192.0.2.20",
+              "mask": "255.255.255.0",
+              "prefixLength": 24
+            }
+          ],
+          "dhcpEnabled": false,
+          "dns1": "198.51.100.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "198.51.100.53"
+          ],
+          "doh1": {
+            "allowFallback": true,
+            "mode": "manual",
+            "template": "https://unexpected.example/dns-query"
+          },
+          "doh2": null,
+          "gateway": "192.0.2.1",
+          "gateways": [
+            "192.0.2.1"
+          ],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "192.0.2.20",
+          "ipv6Enabled": true,
+          "mask": "255.255.255.0",
+          "status": "Up"
+        },
+        "success": true
+      }
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[{\"allowFallback\":false,\"mode\":\"off\",\"serverIp\":\"198.51.100.53\",\"template\":\"https://expected.example/dns-query\"}],\"ipv6Enabled\":true}"
+      }
+    ],
+    "case": "off_still_on",
+    "reads": 2,
+    "result": {
+      "Ok": {
+        "message": "网络配置已成功应用并通过读回校验",
+        "rollbackMessage": null,
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [
+            {
+              "ipAddress": "192.0.2.20",
+              "mask": "255.255.255.0",
+              "prefixLength": 24
+            }
+          ],
+          "dhcpEnabled": false,
+          "dns1": "198.51.100.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "198.51.100.53"
+          ],
+          "doh1": {
+            "allowFallback": true,
+            "mode": "manual",
+            "template": "https://unexpected.example/dns-query"
+          },
+          "doh2": null,
+          "gateway": "192.0.2.1",
+          "gateways": [
+            "192.0.2.1"
+          ],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "192.0.2.20",
+          "ipv6Enabled": true,
+          "mask": "255.255.255.0",
+          "status": "Up"
+        },
+        "success": true
+      }
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[{\"allowFallback\":false,\"mode\":\"manual\",\"serverIp\":\"198.51.100.53\",\"template\":\"https://expected.example/dns-query\"}],\"ipv6Enabled\":true}"
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[{\"allowFallback\":true,\"mode\":\"off\",\"serverIp\":\"192.0.2.53\",\"template\":\"\"}],\"ipv6Enabled\":true}"
+      }
+    ],
+    "case": "new_doh_rollback",
+    "reads": 2,
+    "result": {
+      "Ok": {
+        "message": "fixture: DoH write completed but process timed out",
+        "rollbackMessage": "fixture: DoH write completed but process timed out，已自动执行安全回滚，并成功验证现场配置已完全恢复至修改前状态。",
+        "rolledBack": true,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [
+            {
+              "ipAddress": "192.0.2.10",
+              "mask": "255.255.255.0",
+              "prefixLength": 24
+            }
+          ],
+          "dhcpEnabled": false,
+          "dns1": "192.0.2.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "192.0.2.53"
+          ],
+          "doh1": null,
+          "doh2": null,
+          "gateway": "192.0.2.1",
+          "gateways": [
+            "192.0.2.1"
+          ],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "192.0.2.10",
+          "ipv6Enabled": true,
+          "mask": "255.255.255.0",
+          "status": "Up"
+        },
+        "success": false
+      }
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.20",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "198.51.100.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.10",
+          "255.255.255.0",
+          "192.0.2.1"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "static",
+          "192.0.2.53"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[{\"allowFallback\":true,\"mode\":\"off\",\"serverIp\":\"192.0.2.53\",\"template\":\"\"}],\"ipv6Enabled\":true}"
+      }
+    ],
+    "case": "dns_timeout",
+    "reads": 2,
+    "result": {
+      "Ok": {
+        "message": "执行设置首选 DNS 异常: fixture DNS timeout",
+        "rollbackMessage": "执行设置首选 DNS 异常: fixture DNS timeout，已执行回滚命令但现场核验不一致 (原首选 IP (192.0.2.10/24) 未在当前配置中恢复 (当前配置: [Ipv4AddressConfig { ip_address: \"192.0.2.20\", prefix_length: 24, mask: \"255.255.255.0\" }]))，原配置可能未完整恢复，请手动核对！",
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [
+            {
+              "ipAddress": "192.0.2.20",
+              "mask": "255.255.255.0",
+              "prefixLength": 24
+            }
+          ],
+          "dhcpEnabled": false,
+          "dns1": "198.51.100.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "198.51.100.53"
+          ],
+          "doh1": null,
+          "doh2": null,
+          "gateway": "192.0.2.1",
+          "gateways": [
+            "192.0.2.1"
+          ],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "192.0.2.20",
+          "ipv6Enabled": true,
+          "mask": "255.255.255.0",
+          "status": "Up"
+        },
+        "success": false
+      }
+    }
+  },
+  {
+    "case": "missing_secondary_address_and_gateway",
+    "result": {
+      "Ok": null
+    }
+  },
+  {
+    "case": "unexpected_extra_dns",
+    "result": {
+      "Ok": null
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=\"fixture\"",
+          "source=dhcp"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=\"fixture\"",
+          "source=dhcp"
+        ],
+        "stdin": null
+      },
+      {
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "\n$ErrorActionPreference = 'Stop'\n[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$raw = [Console]::In.ReadToEnd()\n$req = $raw | ConvertFrom-Json\n\n$adapterName = [string]$req.adapter\n$ipv6Enabled = $req.ipv6Enabled\n$dohList = @($req.dohList)\n\n# 1. 设置 IPv6 绑定状态\nif ($null -ne $ipv6Enabled) {\n    try {\n        if ($ipv6Enabled) {\n            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        } else {\n            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop\n        }\n    } catch {\n        throw \"修改 IPv6 状态失败: $_\"\n    }\n}\n\n# 2. 设置 DoH 配置\nforeach ($item in $dohList) {\n    $serverIp = [string]$item.serverIp\n    if (-not $serverIp) { continue }\n    $mode = [string]$item.mode\n    $template = [string]$item.template\n    $allowFallback = [bool]$item.allowFallback\n\n    try {\n        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue\n        if ($mode -eq 'off') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop\n            }\n        } elseif ($mode -eq 'auto') {\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop\n            } else {\n                if ($template) {\n                    Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n                } else {\n                    throw \"服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板\"\n                }\n            }\n        } elseif ($mode -eq 'manual') {\n            if (-not $template) {\n                throw \"服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL\"\n            }\n            if ($existing) {\n                Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            } else {\n                Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop\n            }\n        }\n    } catch {\n        throw \"配置 DNS over HTTPS ($serverIp) 失败: $_\"\n    }\n}\n\n[PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress\n"
+        ],
+        "stdin": "{\"adapter\":\"fixture\",\"dohList\":[],\"ipv6Enabled\":true}"
+      }
+    ],
+    "case": "empty_static_restore_commands",
+    "result": {
+      "Ok": null
+    }
+  }
+]

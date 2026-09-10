@@ -1,0 +1,243 @@
+[
+  {
+    "errorId": "MismatchedPSTypeName,Enable-NetAdapterBinding",
+    "case": "real_parameter_binding",
+    "sets": [
+      {
+        "parameters": [
+          "Name",
+          "ComponentID",
+          "DisplayName",
+          "IncludeHidden",
+          "AllBindings",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "ByName"
+      },
+      {
+        "parameters": [
+          "InterfaceDescription",
+          "ComponentID",
+          "DisplayName",
+          "IncludeHidden",
+          "AllBindings",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "ByInstanceID"
+      },
+      {
+        "parameters": [
+          "InputObject",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "InputObject (cdxml)"
+      }
+    ],
+    "error": "Cannot bind argument to parameter 'InputObject', because PSTypeNames of the argument do not match the PSTypeName required by the parameter: Microsoft.Management.Infrastructure.CimInstance#MSFT_NetAdapterBindingSettingData.",
+    "success": false,
+    "command": "Enable-NetAdapterBinding"
+  },
+  {
+    "error": "Parameter set cannot be resolved using the specified named parameters. One or more parameters issued cannot be used together or an insufficient number of parameters were provided.",
+    "success": false,
+    "case": "real_parameter_set_conflict",
+    "errorId": "AmbiguousParameterSet,Enable-NetAdapterBinding",
+    "command": "Enable-NetAdapterBinding"
+  },
+  {
+    "errorId": "MismatchedPSTypeName,Disable-NetAdapterBinding",
+    "case": "real_parameter_binding",
+    "sets": [
+      {
+        "parameters": [
+          "Name",
+          "ComponentID",
+          "DisplayName",
+          "IncludeHidden",
+          "AllBindings",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "ByName"
+      },
+      {
+        "parameters": [
+          "InterfaceDescription",
+          "ComponentID",
+          "DisplayName",
+          "IncludeHidden",
+          "AllBindings",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "ByInstanceID"
+      },
+      {
+        "parameters": [
+          "InputObject",
+          "PassThru",
+          "CimSession",
+          "ThrottleLimit",
+          "AsJob",
+          "Verbose",
+          "Debug",
+          "ErrorAction",
+          "WarningAction",
+          "InformationAction",
+          "ProgressAction",
+          "ErrorVariable",
+          "WarningVariable",
+          "InformationVariable",
+          "OutVariable",
+          "OutBuffer",
+          "PipelineVariable",
+          "WhatIf",
+          "Confirm"
+        ],
+        "name": "InputObject (cdxml)"
+      }
+    ],
+    "error": "Cannot bind argument to parameter 'InputObject', because PSTypeNames of the argument do not match the PSTypeName required by the parameter: Microsoft.Management.Infrastructure.CimInstance#MSFT_NetAdapterBindingSettingData.",
+    "success": false,
+    "command": "Disable-NetAdapterBinding"
+  },
+  {
+    "error": "Parameter set cannot be resolved using the specified named parameters. One or more parameters issued cannot be used together or an insufficient number of parameters were provided.",
+    "success": false,
+    "case": "real_parameter_set_conflict",
+    "errorId": "AmbiguousParameterSet,Disable-NetAdapterBinding",
+    "command": "Disable-NetAdapterBinding"
+  },
+  {
+    "case": "ipv6_read_error",
+    "doh": {
+      "192.0.2.53": {
+        "allowFallback": false,
+        "template": "https://old.example/dns-query",
+        "autoUpgrade": false
+      }
+    },
+    "success": true,
+    "ipv6": true
+  },
+  {
+    "case": "doh_read_error",
+    "doh": {},
+    "success": true,
+    "ipv6": false
+  },
+  {
+    "dohCalls": [],
+    "case": "unsupported_off",
+    "success": true,
+    "bindingCalls": 1
+  },
+  {
+    "error": "当前 Windows 系统版本缺少 DoH (DNS-over-HTTPS) 支持组件",
+    "case": "unsupported_manual",
+    "success": false,
+    "bindingCalls": 1
+  },
+  {
+    "dohCalls": [
+      {
+        "fallback": false,
+        "auto": false,
+        "server": "192.0.2.53",
+        "template": "https://old.example/dns-query"
+      }
+    ],
+    "case": "off_restore",
+    "success": true,
+    "bindingCalls": 0
+  },
+  {
+    "dohCalls": [],
+    "case": "remove_error",
+    "success": true,
+    "bindingCalls": 0
+  }
+]

@@ -1,0 +1,102 @@
+[
+  {
+    "case": "failed_recovery_warning_hidden",
+    "backend": {
+      "success": false,
+      "rolledBack": false,
+      "message": "DNS apply failed",
+      "rollbackMessage": "RECOVERY_UNKNOWN: manually restore old IP",
+      "snapshot": {
+        "adapterName": "A",
+        "interfaceGuid": "A",
+        "interfaceIndex": 1,
+        "status": "Up",
+        "dhcpEnabled": true,
+        "dnsDhcpEnabled": true,
+        "ipv6Enabled": false,
+        "addresses": [],
+        "gateways": [],
+        "dnsServers": [],
+        "ip": "192.0.2.10",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "dns1": "192.0.2.53",
+        "dns2": ""
+      }
+    },
+    "displayed": "应用失败: DNS apply failed。【恢复诊断】RECOVERY_UNKNOWN: manually restore old IP",
+    "type": "error"
+  },
+  {
+    "case": "dhcp_form_resubmission_has_no_preserve_mode",
+    "payload": {
+      "adapter": "A",
+      "ip": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "",
+      "dns1": "192.0.2.53",
+      "dns2": "",
+      "doh1": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "doh2": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "ipv6Enabled": false,
+      "ipMode": "dhcp",
+      "dnsMode": "dhcp"
+    }
+  },
+  {
+    "case": "unknown_recovery_retains_old_snapshot",
+    "snapshot": {
+      "adapterName": "A",
+      "interfaceGuid": "A",
+      "interfaceIndex": 1,
+      "status": "Up",
+      "dhcpEnabled": true,
+      "dnsDhcpEnabled": true,
+      "ipv6Enabled": false,
+      "addresses": [],
+      "gateways": [],
+      "dnsServers": [],
+      "ip": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "",
+      "dns1": "192.0.2.53",
+      "dns2": ""
+    },
+    "displayed": "应用失败: write failed。【恢复诊断】RECOVERY_UNKNOWN: snapshot unavailable"
+  },
+  {
+    "case": "history_cross_adapter_snapshot",
+    "selected": "B",
+    "formAdapter": "B",
+    "snapshotAdapter": "A",
+    "ipv6Enabled": true
+  },
+  {
+    "case": "missing_history_target_rejected",
+    "unchanged": true,
+    "status": "历史记录绑定的网络适配器 [deleted] 在当前系统中已不存在，已拒绝自动套用，请先确认目标网卡"
+  },
+  {
+    "case": "normal_cached_switch_snapshot",
+    "selected": "A",
+    "snapshotAdapter": "A"
+  },
+  {
+    "case": "superseded_query_cached_switch_loading",
+    "selected": "A",
+    "loading": true
+  },
+  {
+    "case": "invalid_history_items_filtered",
+    "count": 1,
+    "warning": "部分历史记录数据格式不兼容，已自动过滤"
+  }
+]

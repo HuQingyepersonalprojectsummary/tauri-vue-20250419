@@ -1,0 +1,2 @@
+    Checking tauri-vue-20250419 v0.1.0 (C:\XMWJJ\tauri-vue-20250419\src-tauri)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 8.71s

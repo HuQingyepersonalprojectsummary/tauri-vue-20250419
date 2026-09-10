@@ -14,6 +14,11 @@ export interface Ipv4AddressConfig {
   mask: string;
 }
 
+export interface Ipv6AddressConfig {
+  ipAddress: string;
+  prefixLength: number;
+}
+
 export interface DohConfig {
   mode: 'off' | 'auto' | 'manual';
   template: string;
@@ -38,6 +43,16 @@ export interface AdapterSnapshot {
   doh1?: DohConfig;
   doh2?: DohConfig;
   ipv6Enabled?: boolean;
+  ipv6DhcpEnabled?: boolean;
+  ipv6DnsDhcpEnabled?: boolean;
+  ipv6Addresses?: Ipv6AddressConfig[];
+  ipv6Gateways?: string[];
+  ipv6DnsServers?: string[];
+  ipv6Ip?: string;
+  ipv6Prefix?: number;
+  ipv6Gateway?: string;
+  ipv6Dns1?: string;
+  ipv6Dns2?: string;
 }
 
 export interface Ipv4Config {
@@ -50,6 +65,15 @@ export interface Ipv4Config {
   doh1?: DohConfig;
   doh2?: DohConfig;
   ipv6Enabled?: boolean;
+  ipMode?: 'dhcp' | 'static' | 'keep';
+  dnsMode?: 'dhcp' | 'static' | 'keep';
+  ipv6Mode?: 'dhcp' | 'static' | 'keep';
+  ipv6Ip?: string;
+  ipv6Prefix?: number | string;
+  ipv6Gateway?: string;
+  ipv6DnsMode?: 'dhcp' | 'static' | 'keep';
+  ipv6Dns1?: string;
+  ipv6Dns2?: string;
 }
 
 export interface OperationResult {
@@ -73,4 +97,14 @@ export interface HistoryItem {
   doh1?: DohConfig;
   doh2?: DohConfig;
   ipv6Enabled?: boolean;
+  ipMode?: 'dhcp' | 'static' | 'keep';
+  dnsMode?: 'dhcp' | 'static' | 'keep';
+  ipv6Mode?: 'dhcp' | 'static' | 'keep';
+  ipv6Ip?: string;
+  ipv6Prefix?: number | string;
+  ipv6Gateway?: string;
+  ipv6DnsMode?: 'dhcp' | 'static' | 'keep';
+  ipv6Dns1?: string;
+  ipv6Dns2?: string;
 }
+

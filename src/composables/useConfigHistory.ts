@@ -79,6 +79,25 @@ export function useConfigHistory() {
       return false;
     }
 
+    if (record.ipMode !== undefined && record.ipMode !== null) {
+      if (record.ipMode !== 'dhcp' && record.ipMode !== 'static' && record.ipMode !== 'keep') return false;
+    }
+    if (record.dnsMode !== undefined && record.dnsMode !== null) {
+      if (record.dnsMode !== 'dhcp' && record.dnsMode !== 'static' && record.dnsMode !== 'keep') return false;
+    }
+
+    if (record.ipv6Mode !== undefined && record.ipv6Mode !== null) {
+      if (record.ipv6Mode !== 'dhcp' && record.ipv6Mode !== 'static' && record.ipv6Mode !== 'keep') return false;
+    }
+    if (record.ipv6DnsMode !== undefined && record.ipv6DnsMode !== null) {
+      if (record.ipv6DnsMode !== 'dhcp' && record.ipv6DnsMode !== 'static' && record.ipv6DnsMode !== 'keep') return false;
+    }
+    if (record.ipv6Ip !== undefined && record.ipv6Ip !== null && typeof record.ipv6Ip !== 'string') return false;
+    if (record.ipv6Prefix !== undefined && record.ipv6Prefix !== null && typeof record.ipv6Prefix !== 'number' && typeof record.ipv6Prefix !== 'string') return false;
+    if (record.ipv6Gateway !== undefined && record.ipv6Gateway !== null && typeof record.ipv6Gateway !== 'string') return false;
+    if (record.ipv6Dns1 !== undefined && record.ipv6Dns1 !== null && typeof record.ipv6Dns1 !== 'string') return false;
+    if (record.ipv6Dns2 !== undefined && record.ipv6Dns2 !== null && typeof record.ipv6Dns2 !== 'string') return false;
+
     return true;
   }
 
@@ -93,9 +112,9 @@ export function useConfigHistory() {
       let raw = localStorage.getItem(CONFIG_KEY);
       // 迁移旧版数据
       if (!raw) {
-        const legacy = localStorage.getItem(LEGACY_KEY);
-        if (legacy) {
-          raw = legacy;
+        const legacyRaw = localStorage.getItem(LEGACY_KEY);
+        if (legacyRaw) {
+          raw = legacyRaw;
           needPersistMigration = true;
         }
       }
@@ -111,60 +130,58 @@ export function useConfigHistory() {
         return;
       }
 
-      const validItems: HistoryItem[] = [];
-      let hasMalformed = false;
+      const validList: HistoryItem[] = [];
+      let corruptedCount = 0;
 
       for (const item of parsed) {
-        try {
-          if (isValidHistoryItem(item)) {
-            validItems.push({
-              schemaVersion: 1,
-              id: typeof item.id === 'string' && item.id.trim() ? item.id : `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-              timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
-              adapter: item.adapter.trim(),
-              ip: item.ip.trim(),
-              mask: item.mask.trim(),
-              gateway: typeof item.gateway === 'string' ? item.gateway.trim() : '',
-              dns1: typeof item.dns1 === 'string' ? item.dns1.trim() : '',
-              dns2: typeof item.dns2 === 'string' ? item.dns2.trim() : '',
-              doh1: item.doh1 ? {
-                mode: item.doh1.mode,
-                template: item.doh1.template,
-                allowFallback: item.doh1.allowFallback,
-              } : undefined,
-              doh2: item.doh2 ? {
-                mode: item.doh2.mode,
-                template: item.doh2.template,
-                allowFallback: item.doh2.allowFallback,
-              } : undefined,
-              ipv6Enabled: typeof item.ipv6Enabled === 'boolean' ? item.ipv6Enabled : undefined,
-            });
-          } else {
-            hasMalformed = true;
-          }
-        } catch {
-          hasMalformed = true;
+        if (isValidHistoryItem(item)) {
+          validList.push({
+            schemaVersion: 1,
+            id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            timestamp: typeof item.timestamp === 'number' && !isNaN(item.timestamp) ? item.timestamp : Date.now(),
+            adapter: item.adapter.trim(),
+            ip: item.ip.trim(),
+            mask: item.mask.trim(),
+            gateway: (item.gateway || '').trim(),
+            dns1: (item.dns1 || '').trim(),
+            dns2: (item.dns2 || '').trim(),
+            doh1: item.doh1 ? { mode: item.doh1.mode, template: item.doh1.template.trim(), allowFallback: item.doh1.allowFallback } : undefined,
+            doh2: item.doh2 ? { mode: item.doh2.mode, template: item.doh2.template.trim(), allowFallback: item.doh2.allowFallback } : undefined,
+            ipv6Enabled: typeof item.ipv6Enabled === 'boolean' ? item.ipv6Enabled : undefined,
+            ipMode: item.ipMode || 'static',
+            dnsMode: item.dnsMode || 'static',
+            ipv6Mode: item.ipv6Mode,
+            ipv6Ip: (item.ipv6Ip || '').trim(),
+            ipv6Prefix: item.ipv6Prefix,
+            ipv6Gateway: (item.ipv6Gateway || '').trim(),
+            ipv6DnsMode: item.ipv6DnsMode,
+            ipv6Dns1: (item.ipv6Dns1 || '').trim(),
+            ipv6Dns2: (item.ipv6Dns2 || '').trim(),
+          });
+        } else {
+          corruptedCount++;
         }
       }
 
-      if (hasMalformed) {
-        storageWarning.value = '部分历史记录数据格式不兼容，已自动过滤';
+      if (corruptedCount > 0) {
+        storageWarning.value = `部分历史记录数据格式不兼容，已自动过滤 ${corruptedCount} 条异常记录`;
+        needPersistMigration = true;
       }
 
       // 严格限制最大数量为 10
-      configList.value = validItems.slice(0, MAX_HISTORY_ITEMS);
+      configList.value = validList.slice(0, MAX_HISTORY_ITEMS);
 
       // 旧数据格式成功迁移后，原子写入新 key 并清理旧 key (R-09, F-08)
-      if (needPersistMigration && validItems.length > 0) {
+      if (needPersistMigration) {
         try {
           localStorage.setItem(CONFIG_KEY, JSON.stringify(configList.value));
           localStorage.removeItem(LEGACY_KEY);
-        } catch (e) {
-          storageWarning.value = '旧版历史记录迁移持久化失败: ' + (e instanceof Error ? e.message : String(e));
+        } catch {
+          // 降级警告
         }
       }
     } catch {
-      storageWarning.value = '加载历史记录失败，已重置为空';
+      storageWarning.value = '历史配置读取失败，已自动重置历史记录列表';
       configList.value = [];
     }
   }
@@ -188,6 +205,15 @@ export function useConfigHistory() {
       doh1: cfg.doh1 ? { ...cfg.doh1 } : undefined,
       doh2: cfg.doh2 ? { ...cfg.doh2 } : undefined,
       ipv6Enabled: typeof cfg.ipv6Enabled === 'boolean' ? cfg.ipv6Enabled : undefined,
+      ipMode: cfg.ipMode,
+      dnsMode: cfg.dnsMode,
+      ipv6Mode: cfg.ipv6Mode,
+      ipv6Ip: cfg.ipv6Ip?.trim(),
+      ipv6Prefix: cfg.ipv6Prefix,
+      ipv6Gateway: cfg.ipv6Gateway?.trim(),
+      ipv6DnsMode: cfg.ipv6DnsMode,
+      ipv6Dns1: cfg.ipv6Dns1?.trim(),
+      ipv6Dns2: cfg.ipv6Dns2?.trim(),
     };
 
     // 检查是否已有相同配置项（根据字段比对）
@@ -201,7 +227,16 @@ export function useConfigHistory() {
         item.dns2 === newItem.dns2 &&
         JSON.stringify(item.doh1) === JSON.stringify(newItem.doh1) &&
         JSON.stringify(item.doh2) === JSON.stringify(newItem.doh2) &&
-        item.ipv6Enabled === newItem.ipv6Enabled
+        item.ipv6Enabled === newItem.ipv6Enabled &&
+        item.ipMode === newItem.ipMode &&
+        item.dnsMode === newItem.dnsMode &&
+        item.ipv6Mode === newItem.ipv6Mode &&
+        item.ipv6Ip === newItem.ipv6Ip &&
+        item.ipv6Prefix === newItem.ipv6Prefix &&
+        item.ipv6Gateway === newItem.ipv6Gateway &&
+        item.ipv6DnsMode === newItem.ipv6DnsMode &&
+        item.ipv6Dns1 === newItem.ipv6Dns1 &&
+        item.ipv6Dns2 === newItem.ipv6Dns2
     );
 
     if (existingIndex !== -1) {

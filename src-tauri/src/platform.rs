@@ -1,12 +1,14 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    prefix_to_subnet_mask, validate_dns_combination, validate_doh_config, validate_gateway_in_subnet,
-    validate_ipv4, validate_subnet_mask, verify_snapshot_restored, AdapterInfo, AdapterSnapshot,
-    DohConfig, Ipv4AddressConfig, Ipv4Config, OperationResult,
+    prefix_to_subnet_mask, validate_dns_combination, validate_doh_config,
+    validate_gateway_in_subnet, validate_ipv4, validate_ipv6, validate_ipv6_dns_combination,
+    validate_ipv6_prefix, validate_subnet_mask, verify_snapshot_restored, AdapterInfo,
+    AdapterSnapshot, DohConfig, DohServerSetting, Ipv4AddressConfig, Ipv4Config, OperationResult,
 };
 
 /// 进程执行结果封装
@@ -202,15 +204,24 @@ pub fn run_command_with_timeout(
     #[cfg(windows)]
     let job_guard = job_control::ProcessJobGuard::new();
 
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(if stdin_data.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    cmd.stdin(if stdin_data.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    });
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动程序 '{}' 失败: {}", program.display(), e))?;
 
@@ -417,32 +428,95 @@ if (Test-Path $regPath) {
     $dnsDhcpEnabled = $dhcp
 }
 
-# 查询 IPv6 绑定状态
+# 查询 IPv6 绑定状态 (通过精确网卡对象匹配，避免通配符展开，N-06)
 $ipv6Enabled = $true
 try {
-    $binding = Get-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue
+    $binding = Get-NetAdapterBinding -ComponentID ms_tcpip6 -ErrorAction Stop | Where-Object { $_.Name -eq $adapter.Name }
     if ($binding) {
-        $ipv6Enabled = [bool]$binding.Enabled
+        $ipv6Enabled = [bool](@($binding)[0].Enabled)
+    } else {
+        $ipv6Enabled = $false
     }
 } catch {
-    # 忽略非关键读取异常，默认维持 true
+    throw "查询适配器 IPv6 绑定状态异常: $_"
 }
 
-# 查询全局与系统已配置的 DoH 服务器
+# 查询全局与系统已配置的 DoH 服务器 (N-02, N-05, N-09)
 $dohSettings = @{}
-try {
-    $allDoh = @(Get-DnsClientDohServerAddress -ErrorAction SilentlyContinue)
-    foreach ($item in $allDoh) {
-        if ($item.ServerAddress) {
-            $dohSettings[$item.ServerAddress] = @{
-                template = [string]$item.DohTemplate
-                allowFallback = [bool]$item.AllowFallbackToUdp
-                autoUpgrade = [bool]$item.AutoUpgrade
+$hasDohCmdlet = $null -ne (Get-Command Get-DnsClientDohServerAddress -ErrorAction SilentlyContinue)
+if ($hasDohCmdlet) {
+    try {
+        $allDoh = @(Get-DnsClientDohServerAddress -ErrorAction Stop)
+        foreach ($item in $allDoh) {
+            if ($item.ServerAddress) {
+                $dohSettings[$item.ServerAddress] = @{
+                    template = [string]$item.DohTemplate
+                    allowFallback = [bool]$item.AllowFallbackToUdp
+                    autoUpgrade = [bool]$item.AutoUpgrade
+                }
             }
         }
+    } catch {
+        throw "查询全局 DoH 配置异常: $_"
+    }
+}
+
+# 查询 IPv6 地址与前缀
+$ipv6Addresses = @()
+try {
+    $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Where-Object { $_.IPAddress -notlike 'fe80:*' } | Select-Object IPAddress, PrefixLength)
+    if ($ipv6Addresses.Count -eq 0) {
+        $ipv6Addresses = @(Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 | Select-Object IPAddress, PrefixLength)
     }
 } catch {
-    # 不支持 DoH 的旧版 Windows 或读取异常
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230') {
+        throw "查询适配器 IPv6 地址异常: $_"
+    }
+}
+
+# 查询 IPv6 默认路由网关
+$ipv6Gateways = @()
+try {
+    $ipv6Gateways = @(Get-NetRoute -InterfaceIndex $adapter.InterfaceIndex -DestinationPrefix '::/0' -AddressFamily IPv6 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty NextHop)
+} catch {
+    if ($_.Exception.Message -notmatch 'No matching|\u627e\u4e0d\u5230|\u672a\u627e\u5230') {
+        throw "查询 IPv6 默认路由网关异常: $_"
+    }
+}
+
+# 查询 IPv6 DNS 服务器
+$ipv6Dns = @()
+try {
+    $ipv6Dns = @(Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ServerAddresses)
+} catch {
+    throw "查询 IPv6 DNS 服务器异常: $_"
+}
+
+# 查询 IPv6 DHCP / SLAAC 状态
+$ipv6Dhcp = $true
+try {
+    $ipIf6 = Get-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv6 -ErrorAction SilentlyContinue
+    if ($ipIf6) {
+        $ipv6Dhcp = ($ipIf6.Dhcp -eq 'Enabled' -or $ipIf6.RouterDiscovery -eq 'Enabled')
+    }
+} catch {
+    throw "查询 IPv6 DHCP 状态异常: $_"
+}
+
+# 判定 IPv6 DNS 是否为自动获取
+$ipv6DnsDhcpEnabled = $true
+$regPath6 = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\$($adapter.InterfaceGuid)"
+if (Test-Path $regPath6) {
+    try {
+        $reg6 = Get-ItemProperty -Path $regPath6 -ErrorAction Stop
+        if ($reg6 -and $reg6.NameServer -and [string]$reg6.NameServer.Trim().Length -gt 0) {
+            $ipv6DnsDhcpEnabled = $false
+        }
+    } catch {
+        throw "读取网络适配器 IPv6 DNS 注册表模式异常: $_"
+    }
+} else {
+    $ipv6DnsDhcpEnabled = $ipv6Dhcp
 }
 
 [PSCustomObject]@{
@@ -457,10 +531,16 @@ try {
     dnsServers = $dns
     ipv6Enabled = $ipv6Enabled
     dohSettings = $dohSettings
+    dohSupported = $hasDohCmdlet
+    ipv6Addresses = $ipv6Addresses
+    ipv6Gateways = $ipv6Gateways
+    ipv6DnsServers = $ipv6Dns
+    ipv6DhcpEnabled = $ipv6Dhcp
+    ipv6DnsDhcpEnabled = $ipv6DnsDhcpEnabled
 } | ConvertTo-Json -Compress -Depth 3
 "#;
 
-// 固定 PowerShell 脚本：应用 DoH 与 IPv6 配置，通过 stdin JSON 传递参数杜绝注入 (A-01)
+// 固定 PowerShell 脚本：应用 DoH 与 IPv6 配置，通过 stdin JSON 传递参数杜绝注入 (A-01, N-02, N-06, N-09)
 const APPLY_DOH_IPV6_PS_SCRIPT: &str = r#"
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
@@ -472,32 +552,89 @@ $adapterName = [string]$req.adapter
 $ipv6Enabled = $req.ipv6Enabled
 $dohList = @($req.dohList)
 
-# 1. 设置 IPv6 绑定状态
+# 1. 前置能力与参数校验 (N-09: 杜绝在发生修改后才因能力缺失报错)
+$hasDohCmdlet = $null -ne (Get-Command Get-DnsClientDohServerAddress -ErrorAction SilentlyContinue)
+foreach ($item in $dohList) {
+    $mode = [string]$item.mode
+    $action = [string]$item.action
+    if (-not $hasDohCmdlet) {
+        if ($mode -ne 'off' -and $action -ne 'remove') {
+            throw "当前 Windows 系统版本缺少 DoH (DNS-over-HTTPS) 支持组件"
+        }
+    }
+}
+
+# 2. 设置 IPv6 绑定状态 (精确 binding 对象 InputObject，无冲突参数，值未变则跳过，N-06)
 if ($null -ne $ipv6Enabled) {
     try {
-        if ($ipv6Enabled) {
-            Enable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop
-        } else {
-            Disable-NetAdapterBinding -Name $adapterName -ComponentID ms_tcpip6 -ErrorAction Stop
+        $targetBinding = Get-NetAdapterBinding -ComponentID ms_tcpip6 -ErrorAction Stop | Where-Object { $_.Name -eq $adapterName }
+        if (-not $targetBinding) {
+            throw "未找到匹配的网络适配器 IPv6 绑定组件: $adapterName"
+        }
+        $targetBinding = @($targetBinding)[0]
+        if ([bool]$targetBinding.Enabled -ne [bool]$ipv6Enabled) {
+            if ($ipv6Enabled) {
+                Enable-NetAdapterBinding -InputObject $targetBinding -ErrorAction Stop
+            } else {
+                Disable-NetAdapterBinding -InputObject $targetBinding -ErrorAction Stop
+            }
         }
     } catch {
         throw "修改 IPv6 状态失败: $_"
     }
 }
 
-# 2. 设置 DoH 配置
+# 3. 设置 DoH 配置 (支持 remove 动作并严格捕获删除错误，N-02, N-09)
 foreach ($item in $dohList) {
     $serverIp = [string]$item.serverIp
     if (-not $serverIp) { continue }
     $mode = [string]$item.mode
     $template = [string]$item.template
     $allowFallback = [bool]$item.allowFallback
+    $action = [string]$item.action
+
+    if (-not $hasDohCmdlet) {
+        # 如果系统不支持 DoH 但请求关闭或删除，优雅跳过 (N-09)
+        continue
+    }
 
     try {
-        $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction SilentlyContinue
+        if ($action -eq 'remove') {
+            # 回滚时对于新增的 DoH 条目彻底删除，严格区分不存在与删除异常 (N-02)
+            $existing = $null
+            try {
+                $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
+            } catch {
+                if ($_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress objects found' -or $_.FullyQualifiedErrorId -match 'NoMatching') {
+                    $existing = $null
+                } else {
+                    throw "查询待删除 DoH 服务器 ($serverIp) 失败: $_"
+                }
+            }
+            if ($existing) {
+                Remove-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
+            }
+            continue
+        }
+
+        $existing = $null
+        try {
+            $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
+        } catch {
+            if ($_.Exception.Message -match 'No MSFT_DNSClientDohServerAddress objects found' -or $_.FullyQualifiedErrorId -match 'NoMatching') {
+                $existing = $null
+            } else {
+                throw "查询 DoH 服务器 ($serverIp) 失败: $_"
+            }
+        }
+
         if ($mode -eq 'off') {
             if ($existing) {
-                Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $true -ErrorAction Stop
+                if ($template) {
+                    Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AutoUpgrade $false -AllowFallbackToUdp $allowFallback -ErrorAction Stop
+                } else {
+                    Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $false -AllowFallbackToUdp $allowFallback -ErrorAction Stop
+                }
             }
         } elseif ($mode -eq 'auto') {
             if ($existing) {
@@ -535,6 +672,8 @@ pub fn list_network_adapters() -> Result<Vec<AdapterInfo>, String> {
         &[
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-Command",
             LIST_ADAPTERS_PS_SCRIPT,
         ],
@@ -630,6 +769,8 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         &[
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-Command",
             GET_SNAPSHOT_PS_SCRIPT,
         ],
@@ -750,19 +891,67 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
+    let doh_supported = val
+        .get("dohSupported")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
     let doh_map = val.get("dohSettings").and_then(|v| v.as_object());
+    let mut doh_settings = HashMap::new();
+    if let Some(map) = doh_map {
+        for (server_ip, info) in map {
+            let auto_upgrade = info
+                .get("autoUpgrade")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let allow_fallback = info
+                .get("allowFallback")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let template = info
+                .get("template")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            doh_settings.insert(
+                server_ip.clone(),
+                DohServerSetting {
+                    template,
+                    allow_fallback,
+                    auto_upgrade,
+                },
+            );
+        }
+    }
+
     let extract_doh = |dns_ip: &str| -> Option<DohConfig> {
         if dns_ip.trim().is_empty() {
             return None;
         }
         let server_info = doh_map.and_then(|m| m.get(dns_ip))?;
-        let auto_upgrade = server_info.get("autoUpgrade").and_then(|v| v.as_bool()).unwrap_or(false);
-        let allow_fallback = server_info.get("allowFallback").and_then(|v| v.as_bool()).unwrap_or(true);
-        let template = server_info.get("template").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+        let auto_upgrade = server_info
+            .get("autoUpgrade")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let allow_fallback = server_info
+            .get("allowFallback")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let template = server_info
+            .get("template")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
 
         if auto_upgrade {
             Some(DohConfig {
-                mode: if template.is_empty() { "auto".to_string() } else { "manual".to_string() },
+                mode: if template.is_empty() {
+                    "auto".to_string()
+                } else {
+                    "manual".to_string()
+                },
                 template,
                 allow_fallback,
             })
@@ -777,6 +966,79 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
 
     let doh1 = extract_doh(&dns1);
     let doh2 = extract_doh(&dns2);
+
+    let mut ipv6_addresses = Vec::new();
+    if let Some(arr) = val.get("ipv6Addresses").and_then(|v| v.as_array()) {
+        for item in arr {
+            if let (Some(ip), Some(prefix)) = (
+                item.get("ipAddress").and_then(|v| v.as_str()),
+                item.get("prefixLength").and_then(|v| v.as_u64()),
+            ) {
+                let trimmed = ip.trim();
+                if !trimmed.is_empty() {
+                    ipv6_addresses.push(crate::domain::Ipv6AddressConfig {
+                        ip_address: trimmed.to_string(),
+                        prefix_length: prefix as u8,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut ipv6_gateways = Vec::new();
+    if let Some(arr) = val.get("ipv6Gateways").and_then(|v| v.as_array()) {
+        for g in arr {
+            if let Some(s) = g.as_str() {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() && !ipv6_gateways.contains(&trimmed.to_string()) {
+                    ipv6_gateways.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    let mut ipv6_dns_servers = Vec::new();
+    if let Some(arr) = val.get("ipv6DnsServers").and_then(|v| v.as_array()) {
+        for d in arr {
+            if let Some(s) = d.as_str() {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() && !ipv6_dns_servers.contains(&trimmed.to_string()) {
+                    ipv6_dns_servers.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    let ipv6_dhcp_enabled = val
+        .get("ipv6DhcpEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let ipv6_dns_dhcp_enabled = val
+        .get("ipv6DnsDhcpEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let primary_ipv6 = ipv6_addresses
+        .iter()
+        .find(|a| !a.ip_address.starts_with("fe80:") && !a.ip_address.starts_with("FE80:"))
+        .or_else(|| ipv6_addresses.first());
+    let ipv6_ip = primary_ipv6
+        .map(|a| a.ip_address.clone())
+        .unwrap_or_default();
+    let ipv6_prefix = primary_ipv6.map(|a| a.prefix_length);
+    let ipv6_gateway = ipv6_gateways.first().cloned().unwrap_or_default();
+    let ipv6_dns1 = ipv6_dns_servers.first().cloned().unwrap_or_default();
+    let ipv6_dns2 = ipv6_dns_servers.get(1).cloned().unwrap_or_default();
+    let ipv6_mode = Some(if ipv6_dhcp_enabled { "dhcp" } else { "static" }.to_string());
+    let ipv6_dns_mode = Some(
+        if ipv6_dns_dhcp_enabled {
+            "dhcp"
+        } else {
+            "static"
+        }
+        .to_string(),
+    );
 
     Ok(AdapterSnapshot {
         adapter_name,
@@ -796,6 +1058,20 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         doh1,
         doh2,
         ipv6_enabled,
+        doh_settings,
+        doh_supported,
+        ipv6_mode,
+        ipv6_ip,
+        ipv6_prefix,
+        ipv6_gateway,
+        ipv6_dns_mode,
+        ipv6_dns1,
+        ipv6_dns2,
+        ipv6_addresses,
+        ipv6_gateways,
+        ipv6_dns_servers,
+        ipv6_dhcp_enabled,
+        ipv6_dns_dhcp_enabled,
     })
 }
 
@@ -811,20 +1087,28 @@ pub fn apply_doh_and_ipv6_internal(
 
     let ps_path = get_system_binary("powershell.exe");
     let mut payload = serde_json::Map::new();
-    payload.insert("adapter".to_string(), serde_json::Value::String(adapter_name.to_string()));
+    payload.insert(
+        "adapter".to_string(),
+        serde_json::Value::String(adapter_name.to_string()),
+    );
     if let Some(v6) = ipv6_enabled {
         payload.insert("ipv6Enabled".to_string(), serde_json::Value::Bool(v6));
     }
-    payload.insert("dohList".to_string(), serde_json::Value::Array(doh_items.to_vec()));
+    payload.insert(
+        "dohList".to_string(),
+        serde_json::Value::Array(doh_items.to_vec()),
+    );
 
-    let input_bytes = serde_json::to_string(&payload)
-        .map_err(|e| format!("序列化 DoH/IPv6 参数失败: {}", e))?;
+    let input_bytes =
+        serde_json::to_string(&payload).map_err(|e| format!("序列化 DoH/IPv6 参数失败: {}", e))?;
 
     let out = run_command_with_timeout(
         &ps_path,
         &[
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-Command",
             APPLY_DOH_IPV6_PS_SCRIPT,
         ],
@@ -839,8 +1123,16 @@ pub fn apply_doh_and_ipv6_internal(
     Ok(())
 }
 
-/// 执行自动回滚，并在出现任何命令失败时完整汇总返回，杜绝丢弃错误 (R-03, F-01)
+/// 执行自动回滚，并在出现任何命令失败时完整汇总返回，杜绝丢弃错误 (R-03, F-01, N-02, N-04)
 pub fn rollback_snapshot(target: &str, snapshot: &AdapterSnapshot) -> Result<(), String> {
+    rollback_snapshot_internal(target, snapshot, &[])
+}
+
+pub fn rollback_snapshot_internal(
+    target: &str,
+    snapshot: &AdapterSnapshot,
+    touched_dns: &[String],
+) -> Result<(), String> {
     let netsh = get_system_binary("netsh.exe");
     let target_name_param = format!("name=\"{}\"", target);
     let mut errors = Vec::new();
@@ -915,6 +1207,33 @@ pub fn rollback_snapshot(target: &str, snapshot: &AdapterSnapshot) -> Result<(),
                         "执行恢复辅助IP ({}) 异常: {}",
                         secondary.ip_address, e
                     )),
+                    _ => {}
+                }
+            }
+        }
+
+        // 恢复辅助默认网关 (N-04)
+        if snapshot.gateways.len() > 1 {
+            for (idx, sec_gw) in snapshot.gateways[1..].iter().enumerate() {
+                let add_gw_args = [
+                    "interface",
+                    "ip",
+                    "add",
+                    "address",
+                    &target_name_param,
+                    "gateway=",
+                    sec_gw,
+                    &format!("gwmetric={}", idx + 2),
+                ];
+                let res_gw =
+                    run_command_with_timeout(&netsh, &add_gw_args, None, Duration::from_secs(10));
+                match res_gw {
+                    Ok(out) if !out.success => errors.push(format!(
+                        "恢复辅助网关 ({}) 失败: {}",
+                        sec_gw,
+                        out.stderr.trim()
+                    )),
+                    Err(e) => errors.push(format!("执行恢复辅助网关 ({}) 异常: {}", sec_gw, e)),
                     _ => {}
                 }
             }
@@ -1038,45 +1357,149 @@ pub fn rollback_snapshot(target: &str, snapshot: &AdapterSnapshot) -> Result<(),
         }
     }
 
-    // 3. 恢复 IPv6 与 DoH 设置
+    // 3. 恢复 IPv6 与全量 DoH 设置 (还原修改项，删除新增项，N-02)
     let mut rb_doh = Vec::new();
-    if let Some(ref d1) = snapshot.dns_servers.first() {
-        if let Some(ref doh1) = snapshot.doh1 {
-            rb_doh.push(serde_json::json!({
-                "serverIp": d1,
-                "mode": doh1.mode,
-                "template": doh1.template,
-                "allowFallback": doh1.allow_fallback,
-            }));
-        } else {
-            rb_doh.push(serde_json::json!({
-                "serverIp": d1,
-                "mode": "off",
-                "template": "",
-                "allowFallback": true,
-            }));
+    let mut servers_to_revert = Vec::new();
+    for ip in touched_dns {
+        if !servers_to_revert.contains(ip) {
+            servers_to_revert.push(ip.clone());
         }
     }
-    if let Some(d2) = snapshot.dns_servers.get(1) {
-        if let Some(ref doh2) = snapshot.doh2 {
+    for ip in &snapshot.dns_servers {
+        if !servers_to_revert.contains(ip) {
+            servers_to_revert.push(ip.clone());
+        }
+    }
+
+    for ip in servers_to_revert {
+        if let Some(entry) = snapshot.doh_settings.get(&ip) {
+            // 原先存在此条目：完整还原模板与策略 (包括 off 时的 template 与 allow_fallback，N-02)
             rb_doh.push(serde_json::json!({
-                "serverIp": d2,
-                "mode": doh2.mode,
-                "template": doh2.template,
-                "allowFallback": doh2.allow_fallback,
+                "serverIp": ip,
+                "mode": if entry.auto_upgrade {
+                    if entry.template.is_empty() { "auto" } else { "manual" }
+                } else {
+                    "off"
+                },
+                "template": entry.template,
+                "allowFallback": entry.allow_fallback,
+                "action": "set",
             }));
         } else {
+            // 本次变更前不存在此 DoH 条目：回滚时彻底删除 (N-02)
             rb_doh.push(serde_json::json!({
-                "serverIp": d2,
-                "mode": "off",
-                "template": "",
-                "allowFallback": true,
+                "serverIp": ip,
+                "action": "remove",
             }));
         }
     }
 
     if let Err(e) = apply_doh_and_ipv6_internal(target, Some(snapshot.ipv6_enabled), &rb_doh) {
         errors.push(format!("回滚 DoH / IPv6 状态异常: {}", e));
+    }
+
+    // 恢复 IPv6 详细网络与 DNS 配置
+    if snapshot.ipv6_enabled {
+        if snapshot.ipv6_dhcp_enabled {
+            let res_v6_dhcp = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "interface",
+                    &target_name_param,
+                    "routerdiscovery=enabled",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if let Err(e) = res_v6_dhcp {
+                errors.push(format!("恢复 IPv6 自动获取异常: {}", e));
+            }
+        } else {
+            for v6 in &snapshot.ipv6_addresses {
+                let v6_prefix_str = format!("{}/{}", v6.ip_address, v6.prefix_length);
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "add",
+                        "address",
+                        &target_name_param,
+                        &v6_prefix_str,
+                    ],
+                    None,
+                    Duration::from_secs(15),
+                );
+            }
+            if let Some(gw) = snapshot.ipv6_gateways.first() {
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "add",
+                        "route",
+                        "::/0",
+                        &target_name_param,
+                        gw,
+                    ],
+                    None,
+                    Duration::from_secs(15),
+                );
+            }
+        }
+
+        if snapshot.ipv6_dns_dhcp_enabled {
+            let _ = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "dnsservers",
+                    &target_name_param,
+                    "source=dhcp",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+        } else if let Some(v6_d1) = snapshot.ipv6_dns_servers.first() {
+            let _ = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "dnsservers",
+                    &target_name_param,
+                    "static",
+                    v6_d1,
+                    "validate=no",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if let Some(v6_d2) = snapshot.ipv6_dns_servers.get(1) {
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "add",
+                        "dnsservers",
+                        &target_name_param,
+                        v6_d2,
+                        "index=2",
+                        "validate=no",
+                    ],
+                    None,
+                    Duration::from_secs(15),
+                );
+            }
+        }
     }
 
     if errors.is_empty() {
@@ -1086,7 +1509,7 @@ pub fn rollback_snapshot(target: &str, snapshot: &AdapterSnapshot) -> Result<(),
     }
 }
 
-/// 事务式应用 IPv4 网络配置，包含事前快照、执行、读回校验、自动回滚与回滚现场真值比对 (A-01, A-03, A-06, R-01, R-02, F-01, F-05)
+/// 事务式应用 IPv4 网络配置，包含事前快照、执行、读回校验、自动回滚与回滚现场真值比对 (A-01, A-03, A-06, R-01, R-02, F-01, F-05, N-02, N-03, N-07)
 pub fn apply_adapter_ipv4_config_transactional(
     cfg: &Ipv4Config,
 ) -> Result<OperationResult, String> {
@@ -1094,30 +1517,82 @@ pub fn apply_adapter_ipv4_config_transactional(
         return Err("请选择网络适配器".to_string());
     }
 
-    // 1. 严格网络语义校验
-    let ip_val = validate_ipv4(&cfg.ip)?;
-    let mask_len = validate_subnet_mask(&cfg.mask)?;
-    let mask_val = validate_ipv4(&cfg.mask)?;
+    // 确定协议意图模式 (N-07)
+    let ip_mode = cfg
+        .ip_mode
+        .as_deref()
+        .unwrap_or(if cfg.ip.trim().is_empty() {
+            "keep"
+        } else {
+            "static"
+        })
+        .to_lowercase();
+    let dns_mode = cfg
+        .dns_mode
+        .as_deref()
+        .unwrap_or(
+            if cfg.dns1.trim().is_empty() && cfg.dns2.trim().is_empty() {
+                "keep"
+            } else {
+                "static"
+            },
+        )
+        .to_lowercase();
 
-    let gw_opt = if !cfg.gateway.trim().is_empty() {
-        let gw = validate_ipv4(&cfg.gateway)?;
-        validate_gateway_in_subnet(ip_val, mask_val, gw)?;
-        Some(cfg.gateway.trim().to_string())
+    let ipv6_mode = cfg
+        .ipv6_mode
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .unwrap_or_else(|| "keep".to_string());
+    let ipv6_dns_mode = cfg
+        .ipv6_dns_mode
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .unwrap_or_else(|| "keep".to_string());
+
+    // 1. 严格网络语义校验
+    let (mask_len_opt, gw_opt) = if ip_mode == "static" {
+        let ip_val = validate_ipv4(&cfg.ip)?;
+        let mask_len = validate_subnet_mask(&cfg.mask)?;
+        let mask_val = validate_ipv4(&cfg.mask)?;
+        let gw = if !cfg.gateway.trim().is_empty() {
+            let gw_val = validate_ipv4(&cfg.gateway)?;
+            validate_gateway_in_subnet(ip_val, mask_val, gw_val)?;
+            Some(cfg.gateway.trim().to_string())
+        } else {
+            None
+        };
+        (Some(mask_len), gw)
     } else {
-        None
+        (None, None)
     };
 
-    validate_dns_combination(&cfg.dns1, &cfg.dns2)?;
-    validate_doh_config(&cfg.dns1, cfg.doh1.as_ref(), "首选 DNS")?;
-    validate_doh_config(&cfg.dns2, cfg.doh2.as_ref(), "备用 DNS")?;
+    if dns_mode == "static" {
+        validate_dns_combination(&cfg.dns1, &cfg.dns2)?;
+        validate_doh_config(&cfg.dns1, cfg.doh1.as_ref(), "首选 DNS")?;
+        validate_doh_config(&cfg.dns2, cfg.doh2.as_ref(), "备用 DNS")?;
+    }
 
-    let dns1_opt = if !cfg.dns1.trim().is_empty() {
+    // IPv6 语义校验
+    if ipv6_mode == "static" {
+        validate_ipv6(&cfg.ipv6_ip)?;
+        let prefix = cfg.ipv6_prefix.unwrap_or(64);
+        validate_ipv6_prefix(prefix)?;
+        if !cfg.ipv6_gateway.trim().is_empty() {
+            validate_ipv6(&cfg.ipv6_gateway)?;
+        }
+    }
+    if ipv6_dns_mode == "static" {
+        validate_ipv6_dns_combination(&cfg.ipv6_dns1, &cfg.ipv6_dns2)?;
+    }
+
+    let dns1_opt = if dns_mode == "static" && !cfg.dns1.trim().is_empty() {
         Some(cfg.dns1.trim().to_string())
     } else {
         None
     };
 
-    let dns2_opt = if !cfg.dns2.trim().is_empty() {
+    let dns2_opt = if dns_mode == "static" && !cfg.dns2.trim().is_empty() {
         Some(cfg.dns2.trim().to_string())
     } else {
         None
@@ -1131,13 +1606,51 @@ pub fn apply_adapter_ipv4_config_transactional(
             cfg.adapter
         ));
     }
+    if !before_snapshot.dhcp_enabled && before_snapshot.addresses.is_empty() {
+        return Err(
+            "适配器处于异常状态 (未启用 DHCP 且无静态 IP)，无法安全执行事务修改".to_string(),
+        );
+    }
+
+    // 前置能力检测：若系统不支持 DoH 但静态 DNS 请求了启用 DoH，在任何写入前停止 (N-09)
+    if !before_snapshot.doh_supported && dns_mode == "static" {
+        let doh1_active = cfg
+            .doh1
+            .as_ref()
+            .map(|d| d.mode.as_str() != "off")
+            .unwrap_or(false);
+        let doh2_active = cfg
+            .doh2
+            .as_ref()
+            .map(|d| d.mode.as_str() != "off")
+            .unwrap_or(false);
+        if doh1_active || doh2_active {
+            return Err("当前 Windows 系统版本缺少 DoH (DNS-over-HTTPS) 支持组件".to_string());
+        }
+    }
+
+    // 收集所有本次可能影响的 DNS 服务器，用于精确回滚 (N-02)
+    let mut touched_dns = Vec::new();
+    if let Some(ref d1) = dns1_opt {
+        touched_dns.push(d1.clone());
+    }
+    if let Some(ref d2) = dns2_opt {
+        if !touched_dns.contains(d2) {
+            touched_dns.push(d2.clone());
+        }
+    }
+    for d in &before_snapshot.dns_servers {
+        if !touched_dns.contains(d) {
+            touched_dns.push(d.clone());
+        }
+    }
 
     let netsh = get_system_binary("netsh.exe");
     let name_param = format!("name=\"{}\"", cfg.adapter);
 
-    // 闭包：执行安全回滚并在读回后与 before_snapshot 严格比对现场真值 (F-01)
+    // 闭包：执行安全回滚并在读回后与 before_snapshot 严格比对现场真值 (F-01, N-02)
     let verify_and_build_rollback_result = |failure_reason: String| -> OperationResult {
-        let rb_res = rollback_snapshot(&cfg.adapter, &before_snapshot);
+        let rb_res = rollback_snapshot_internal(&cfg.adapter, &before_snapshot, &touched_dns);
         let current_snap_after_rb = get_adapter_snapshot(&cfg.adapter).ok();
 
         let (rolled_back, rb_msg) = match (rb_res, &current_snap_after_rb) {
@@ -1174,69 +1687,103 @@ pub fn apply_adapter_ipv4_config_transactional(
         }
     };
 
-    // 3. 应用 IP、掩码与网关
-    let mut set_ip_args = vec![
-        "interface",
-        "ip",
-        "set",
-        "address",
-        &name_param,
-        "static",
-        &cfg.ip,
-        &cfg.mask,
-    ];
-    if let Some(ref gw) = gw_opt {
-        set_ip_args.push(gw);
-    }
+    // 3. 应用 IP 设置 (根据 ip_mode 决定执行 static / dhcp / keep，N-07)
+    if ip_mode == "static" {
+        let mut set_ip_args = vec![
+            "interface",
+            "ip",
+            "set",
+            "address",
+            &name_param,
+            "static",
+            &cfg.ip,
+            &cfg.mask,
+        ];
+        if let Some(ref gw) = gw_opt {
+            set_ip_args.push(gw);
+        }
 
-    let ip_out = run_command_with_timeout(&netsh, &set_ip_args, None, Duration::from_secs(20));
-    let ip_success = match &ip_out {
-        Ok(out) => out.success,
-        Err(_) => false,
-    };
-
-    if !ip_success {
-        let err_detail = match ip_out {
-            Ok(out) => format!(
-                "设置 IP 地址失败: {}\n输出: {}",
-                out.stderr.trim(),
-                out.stdout.trim()
-            ),
-            Err(e) => format!("执行设置 IP 地址命令异常: {}", e),
+        let ip_out = run_command_with_timeout(&netsh, &set_ip_args, None, Duration::from_secs(20));
+        let ip_success = match &ip_out {
+            Ok(out) => out.success,
+            Err(_) => false,
         };
-        return Ok(verify_and_build_rollback_result(err_detail));
+
+        if !ip_success {
+            let err_detail = match ip_out {
+                Ok(out) => format!(
+                    "设置 IP 地址失败: {}\n输出: {}",
+                    out.stderr.trim(),
+                    out.stdout.trim()
+                ),
+                Err(e) => format!("执行设置 IP 地址命令异常: {}", e),
+            };
+            return Ok(verify_and_build_rollback_result(err_detail));
+        }
+    } else if ip_mode == "dhcp" && !before_snapshot.dhcp_enabled {
+        // 若原先已是 DHCP，生成 no-op，绝不执行静态写入！(N-07)
+        let set_dhcp_args = [
+            "interface",
+            "ip",
+            "set",
+            "address",
+            &name_param,
+            "source=dhcp",
+        ];
+        let dhcp_out =
+            run_command_with_timeout(&netsh, &set_dhcp_args, None, Duration::from_secs(15));
+        if !matches!(&dhcp_out, Ok(out) if out.success) {
+            let err_detail = match dhcp_out {
+                Ok(out) => format!("切换 IP 为 DHCP 失败: {}", out.stderr.trim()),
+                Err(e) => format!("执行切换 IP 为 DHCP 命令异常: {}", e),
+            };
+            return Ok(verify_and_build_rollback_result(err_detail));
+        }
     }
 
-    // 4. 应用 DNS (R-01: 任何错误或超时绝不直接以 ? 逃逸，统一触发回滚)
+    // 4. 应用 DNS 设置 (根据 dns_mode 决定，N-07)
     let mut dns_failure = None;
-    if let Some(ref d1) = dns1_opt {
-        let dns1_out = run_command_with_timeout(
+    if dns_mode == "static" {
+        if let Some(ref d1) = dns1_opt {
+            let dns1_out = run_command_with_timeout(
+                &netsh,
+                &["interface", "ip", "set", "dns", &name_param, "static", d1],
+                None,
+                Duration::from_secs(15),
+            );
+
+            match dns1_out {
+                Ok(out) if out.success => {
+                    if let Some(ref d2) = dns2_opt {
+                        let dns2_out = run_command_with_timeout(
+                            &netsh,
+                            &["interface", "ip", "add", "dns", &name_param, d2, "index=2"],
+                            None,
+                            Duration::from_secs(15),
+                        );
+                        match dns2_out {
+                            Ok(out2) if out2.success => {}
+                            Ok(out2) => {
+                                dns_failure =
+                                    Some(format!("设置辅助 DNS 失败: {}", out2.stderr.trim()))
+                            }
+                            Err(e) => dns_failure = Some(format!("执行设置辅助 DNS 异常: {}", e)),
+                        }
+                    }
+                }
+                Ok(out) => dns_failure = Some(format!("设置首选 DNS 失败: {}", out.stderr.trim())),
+                Err(e) => dns_failure = Some(format!("执行设置首选 DNS 异常: {}", e)),
+            }
+        }
+    } else if dns_mode == "dhcp" && !before_snapshot.dns_dhcp_enabled {
+        let set_dns_dhcp = run_command_with_timeout(
             &netsh,
-            &["interface", "ip", "set", "dns", &name_param, "static", d1],
+            &["interface", "ip", "set", "dns", &name_param, "source=dhcp"],
             None,
             Duration::from_secs(15),
         );
-
-        match dns1_out {
-            Ok(out) if out.success => {
-                if let Some(ref d2) = dns2_opt {
-                    let dns2_out = run_command_with_timeout(
-                        &netsh,
-                        &["interface", "ip", "add", "dns", &name_param, d2, "index=2"],
-                        None,
-                        Duration::from_secs(15),
-                    );
-                    match dns2_out {
-                        Ok(out2) if out2.success => {}
-                        Ok(out2) => {
-                            dns_failure = Some(format!("设置辅助 DNS 失败: {}", out2.stderr.trim()))
-                        }
-                        Err(e) => dns_failure = Some(format!("执行设置辅助 DNS 异常: {}", e)),
-                    }
-                }
-            }
-            Ok(out) => dns_failure = Some(format!("设置首选 DNS 失败: {}", out.stderr.trim())),
-            Err(e) => dns_failure = Some(format!("执行设置首选 DNS 异常: {}", e)),
+        if !matches!(&set_dns_dhcp, Ok(out) if out.success) {
+            dns_failure = Some("切换 DNS 为 DHCP 失败".to_string());
         }
     }
 
@@ -1246,34 +1793,220 @@ pub fn apply_adapter_ipv4_config_transactional(
 
     // 5. 应用 DoH 与 IPv6 设置
     let mut doh_items = Vec::new();
-    if let Some(ref d1) = dns1_opt {
-        if let Some(ref doh1) = cfg.doh1 {
-            doh_items.push(serde_json::json!({
-                "serverIp": d1,
-                "mode": doh1.mode,
-                "template": doh1.template,
-                "allowFallback": doh1.allow_fallback,
-            }));
+    if dns_mode == "static" {
+        if let Some(ref d1) = dns1_opt {
+            if let Some(ref doh1) = cfg.doh1 {
+                doh_items.push(serde_json::json!({
+                    "serverIp": d1,
+                    "mode": doh1.mode,
+                    "template": doh1.template,
+                    "allowFallback": doh1.allow_fallback,
+                    "action": "set",
+                }));
+            }
         }
-    }
-    if let Some(ref d2) = dns2_opt {
-        if let Some(ref doh2) = cfg.doh2 {
-            doh_items.push(serde_json::json!({
-                "serverIp": d2,
-                "mode": doh2.mode,
-                "template": doh2.template,
-                "allowFallback": doh2.allow_fallback,
-            }));
+        if let Some(ref d2) = dns2_opt {
+            if let Some(ref doh2) = cfg.doh2 {
+                doh_items.push(serde_json::json!({
+                    "serverIp": d2,
+                    "mode": doh2.mode,
+                    "template": doh2.template,
+                    "allowFallback": doh2.allow_fallback,
+                    "action": "set",
+                }));
+            }
         }
     }
 
     if cfg.ipv6_enabled.is_some() || !doh_items.is_empty() {
-        if let Err(err_doh) = apply_doh_and_ipv6_internal(&cfg.adapter, cfg.ipv6_enabled, &doh_items) {
+        if let Err(err_doh) =
+            apply_doh_and_ipv6_internal(&cfg.adapter, cfg.ipv6_enabled, &doh_items)
+        {
             return Ok(verify_and_build_rollback_result(err_doh));
         }
     }
 
-    // 6. 读回并校验生效状态 (收敛重试，最多 3 秒，严格覆盖 DNS 顺序、DNS 模式与网卡 GUID 身份) (R-02, F-05)
+    // 6. 应用 IPv6 IP 设置 (根据 ipv6_mode 决定)
+    if cfg.ipv6_enabled != Some(false)
+        && (before_snapshot.ipv6_enabled || cfg.ipv6_enabled == Some(true))
+    {
+        if ipv6_mode == "static" {
+            let prefix = cfg.ipv6_prefix.unwrap_or(64);
+            let ip_with_prefix = format!("{}/{}", cfg.ipv6_ip.trim(), prefix);
+            for old_ip in &before_snapshot.ipv6_addresses {
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "delete",
+                        "address",
+                        &name_param,
+                        &old_ip.ip_address,
+                    ],
+                    None,
+                    Duration::from_secs(10),
+                );
+            }
+            let add_v6_res = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "add",
+                    "address",
+                    &name_param,
+                    &ip_with_prefix,
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if !matches!(&add_v6_res, Ok(out) if out.success) {
+                let err = match add_v6_res {
+                    Ok(out) => format!("设置静态 IPv6 地址失败: {}", out.stderr.trim()),
+                    Err(e) => format!("执行设置静态 IPv6 地址异常: {}", e),
+                };
+                return Ok(verify_and_build_rollback_result(err));
+            }
+
+            if !cfg.ipv6_gateway.trim().is_empty() {
+                let gw = cfg.ipv6_gateway.trim();
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &["interface", "ipv6", "delete", "route", "::/0", &name_param],
+                    None,
+                    Duration::from_secs(10),
+                );
+                let add_gw_res = run_command_with_timeout(
+                    &netsh,
+                    &["interface", "ipv6", "add", "route", "::/0", &name_param, gw],
+                    None,
+                    Duration::from_secs(15),
+                );
+                if !matches!(&add_gw_res, Ok(out) if out.success) {
+                    let err = match add_gw_res {
+                        Ok(out) => format!("设置 IPv6 默认网关失败: {}", out.stderr.trim()),
+                        Err(e) => format!("执行设置 IPv6 默认网关异常: {}", e),
+                    };
+                    return Ok(verify_and_build_rollback_result(err));
+                }
+            }
+        } else if ipv6_mode == "dhcp" && !before_snapshot.ipv6_dhcp_enabled {
+            for old_ip in &before_snapshot.ipv6_addresses {
+                let _ = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "delete",
+                        "address",
+                        &name_param,
+                        &old_ip.ip_address,
+                    ],
+                    None,
+                    Duration::from_secs(10),
+                );
+            }
+            let set_v6_dhcp = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "interface",
+                    &name_param,
+                    "routerdiscovery=enabled",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if !matches!(&set_v6_dhcp, Ok(out) if out.success) {
+                let err = match set_v6_dhcp {
+                    Ok(out) => format!("切换 IPv6 为自动获取失败: {}", out.stderr.trim()),
+                    Err(e) => format!("执行切换 IPv6 为自动获取异常: {}", e),
+                };
+                return Ok(verify_and_build_rollback_result(err));
+            }
+        }
+
+        // 7. 应用 IPv6 DNS 设置 (根据 ipv6_dns_mode 决定)
+        if ipv6_dns_mode == "static" {
+            let v6_d1 = cfg.ipv6_dns1.trim();
+            if !v6_d1.is_empty() {
+                let set_v6_dns = run_command_with_timeout(
+                    &netsh,
+                    &[
+                        "interface",
+                        "ipv6",
+                        "set",
+                        "dnsservers",
+                        &name_param,
+                        "static",
+                        v6_d1,
+                        "validate=no",
+                    ],
+                    None,
+                    Duration::from_secs(15),
+                );
+                if !matches!(&set_v6_dns, Ok(out) if out.success) {
+                    let err = match set_v6_dns {
+                        Ok(out) => format!("设置首选 IPv6 DNS 失败: {}", out.stderr.trim()),
+                        Err(e) => format!("执行设置首选 IPv6 DNS 异常: {}", e),
+                    };
+                    return Ok(verify_and_build_rollback_result(err));
+                }
+
+                let v6_d2 = cfg.ipv6_dns2.trim();
+                if !v6_d2.is_empty() {
+                    let add_v6_dns = run_command_with_timeout(
+                        &netsh,
+                        &[
+                            "interface",
+                            "ipv6",
+                            "add",
+                            "dnsservers",
+                            &name_param,
+                            v6_d2,
+                            "index=2",
+                            "validate=no",
+                        ],
+                        None,
+                        Duration::from_secs(15),
+                    );
+                    if !matches!(&add_v6_dns, Ok(out) if out.success) {
+                        let err = match add_v6_dns {
+                            Ok(out) => format!("设置备用 IPv6 DNS 失败: {}", out.stderr.trim()),
+                            Err(e) => format!("执行设置备用 IPv6 DNS 异常: {}", e),
+                        };
+                        return Ok(verify_and_build_rollback_result(err));
+                    }
+                }
+            }
+        } else if ipv6_dns_mode == "dhcp" && !before_snapshot.ipv6_dns_dhcp_enabled {
+            let set_v6_dns_dhcp = run_command_with_timeout(
+                &netsh,
+                &[
+                    "interface",
+                    "ipv6",
+                    "set",
+                    "dnsservers",
+                    &name_param,
+                    "source=dhcp",
+                ],
+                None,
+                Duration::from_secs(15),
+            );
+            if !matches!(&set_v6_dns_dhcp, Ok(out) if out.success) {
+                let err = match set_v6_dns_dhcp {
+                    Ok(out) => format!("切换 IPv6 DNS 为自动获取失败: {}", out.stderr.trim()),
+                    Err(e) => format!("执行切换 IPv6 DNS 为自动获取异常: {}", e),
+                };
+                return Ok(verify_and_build_rollback_result(err));
+            }
+        }
+    }
+
+    // 6. 读回并校验生效状态 (收敛重试，最多 3 秒，严格覆盖各模式期望) (R-02, F-05, N-03, N-07)
     let start_wait = Instant::now();
     let max_wait = Duration::from_secs(3);
     let mut final_snapshot = None;
@@ -1293,53 +2026,59 @@ pub fn apply_adapter_ipv4_config_transactional(
                     ));
                 }
 
-                // 2. IP 地址及掩码
-                let ip_ok = s
-                    .addresses
-                    .iter()
-                    .any(|a| a.ip_address == cfg.ip && a.prefix_length == mask_len);
-                if !ip_ok {
-                    reasons.push("IP地址或掩码未匹配".to_string());
-                }
-
-                // 3. DHCP 状态
-                if s.dhcp_enabled {
-                    reasons.push("IP DHCP未关闭".to_string());
-                }
-
-                // 4. 网关配置
-                if let Some(ref gw) = gw_opt {
-                    if !s.gateways.iter().any(|g| g == gw) {
-                        reasons.push("默认网关未匹配".to_string());
+                // 2. IP 地址及 DHCP 模式核验 (N-07)
+                if ip_mode == "static" {
+                    if s.dhcp_enabled {
+                        reasons.push("IP DHCP未关闭".to_string());
                     }
-                }
-
-                // 5. DNS 顺序与模式严格比对 (F-05)
-                if dns1_opt.is_some() || dns2_opt.is_some() {
-                    if s.dns_dhcp_enabled {
-                        reasons.push("DNS DHCP未关闭".to_string());
-                    }
-                    if let Some(ref d1) = dns1_opt {
-                        if s.dns_servers.first() != Some(d1) {
-                            reasons.push(format!(
-                                "首选DNS顺序或值不匹配 (期望: {}, 实际: {:?})",
-                                d1,
-                                s.dns_servers.first()
-                            ));
+                    if let Some(mask_len) = mask_len_opt {
+                        let ip_ok = s
+                            .addresses
+                            .iter()
+                            .any(|a| a.ip_address == cfg.ip && a.prefix_length == mask_len);
+                        if !ip_ok {
+                            reasons.push("IP地址或掩码未匹配".to_string());
                         }
                     }
-                    if let Some(ref d2) = dns2_opt {
-                        if s.dns_servers.get(1) != Some(d2) {
-                            reasons.push(format!(
-                                "辅助DNS顺序或值不匹配 (期望: {}, 实际: {:?})",
-                                d2,
-                                s.dns_servers.get(1)
-                            ));
+                    if let Some(ref gw) = gw_opt {
+                        if !s.gateways.iter().any(|g| g == gw) {
+                            reasons.push("默认网关未匹配".to_string());
                         }
                     }
+                } else if ip_mode == "dhcp" && !s.dhcp_enabled {
+                    reasons.push("IP DHCP未能开启".to_string());
                 }
 
-                // 6. IPv6 状态核验
+                // 3. DNS 顺序与模式严格比对 (F-05, N-07)
+                if dns_mode == "static" {
+                    if dns1_opt.is_some() || dns2_opt.is_some() {
+                        if s.dns_dhcp_enabled {
+                            reasons.push("DNS DHCP未关闭".to_string());
+                        }
+                        if let Some(ref d1) = dns1_opt {
+                            if s.dns_servers.first() != Some(d1) {
+                                reasons.push(format!(
+                                    "首选DNS顺序或值不匹配 (期望: {}, 实际: {:?})",
+                                    d1,
+                                    s.dns_servers.first()
+                                ));
+                            }
+                        }
+                        if let Some(ref d2) = dns2_opt {
+                            if s.dns_servers.get(1) != Some(d2) {
+                                reasons.push(format!(
+                                    "辅助DNS顺序或值不匹配 (期望: {}, 实际: {:?})",
+                                    d2,
+                                    s.dns_servers.get(1)
+                                ));
+                            }
+                        }
+                    }
+                } else if dns_mode == "dhcp" && !s.dns_dhcp_enabled {
+                    reasons.push("DNS DHCP未能开启".to_string());
+                }
+
+                // 4. IPv6 状态核验
                 if let Some(expected_ipv6) = cfg.ipv6_enabled {
                     if s.ipv6_enabled != expected_ipv6 {
                         reasons.push(format!(
@@ -1349,21 +2088,88 @@ pub fn apply_adapter_ipv4_config_transactional(
                     }
                 }
 
-                // 7. DoH 状态核验
-                if let Some(ref exp_doh1) = cfg.doh1 {
-                    if exp_doh1.mode != "off" {
-                        let actual_mode = s.doh1.as_ref().map(|d| d.mode.as_str()).unwrap_or("off");
-                        if actual_mode == "off" {
-                            reasons.push("首选DNS DoH未成功生效".to_string());
+                // 5. DoH 状态严格核验 (关闭状态、模板URL、明文回退，N-03)
+                if dns_mode == "static" {
+                    let verify_doh_readback = |exp_opt: Option<&DohConfig>,
+                                               act_opt: Option<&DohConfig>,
+                                               label: &str|
+                     -> Option<String> {
+                        let exp = exp_opt?;
+                        let act_mode = act_opt.map(|d| d.mode.as_str()).unwrap_or("off");
+                        if exp.mode == "off" {
+                            if act_mode != "off" {
+                                return Some(format!(
+                                    "{} DoH未成功关闭 (当前仍为: {})",
+                                    label, act_mode
+                                ));
+                            }
+                        } else {
+                            if act_mode == "off" {
+                                return Some(format!("{} DoH未成功开启", label));
+                            }
+                            if exp.mode == "manual" {
+                                let act_tmpl = act_opt.map(|d| d.template.as_str()).unwrap_or("");
+                                if act_tmpl != exp.template.trim() {
+                                    return Some(format!(
+                                        "{} DoH模板未匹配 (期望: {}, 实际: {})",
+                                        label, exp.template, act_tmpl
+                                    ));
+                                }
+                            }
+                            let act_fb = act_opt.map(|d| d.allow_fallback).unwrap_or(true);
+                            if act_fb != exp.allow_fallback {
+                                return Some(format!(
+                                    "{} DoH明文回退未匹配 (期望: {}, 实际: {})",
+                                    label, exp.allow_fallback, act_fb
+                                ));
+                            }
                         }
+                        None
+                    };
+
+                    if let Some(err) =
+                        verify_doh_readback(cfg.doh1.as_ref(), s.doh1.as_ref(), "首选DNS")
+                    {
+                        reasons.push(err);
+                    }
+                    if let Some(err) =
+                        verify_doh_readback(cfg.doh2.as_ref(), s.doh2.as_ref(), "备用DNS")
+                    {
+                        reasons.push(err);
                     }
                 }
-                if let Some(ref exp_doh2) = cfg.doh2 {
-                    if exp_doh2.mode != "off" {
-                        let actual_mode = s.doh2.as_ref().map(|d| d.mode.as_str()).unwrap_or("off");
-                        if actual_mode == "off" {
-                            reasons.push("备用DNS DoH未成功生效".to_string());
+
+                // 6. IPv6 读回校验
+                if s.ipv6_enabled {
+                    if ipv6_mode == "static" {
+                        let exp_ip = cfg.ipv6_ip.trim();
+                        let exp_prefix = cfg.ipv6_prefix.unwrap_or(64);
+                        if !s.ipv6_addresses.iter().any(|a| {
+                            a.ip_address.eq_ignore_ascii_case(exp_ip)
+                                && a.prefix_length == exp_prefix
+                        }) {
+                            reasons.push(format!(
+                                "静态 IPv6 地址未生效 (期望: {}/{})",
+                                exp_ip, exp_prefix
+                            ));
                         }
+                    } else if ipv6_mode == "dhcp" && !s.ipv6_dhcp_enabled {
+                        reasons.push("IPv6 自动获取未开启".to_string());
+                    }
+
+                    if ipv6_dns_mode == "static" {
+                        if !cfg.ipv6_dns1.trim().is_empty() {
+                            let exp_d1 = cfg.ipv6_dns1.trim();
+                            if s.ipv6_dns_servers.first().map(|s| s.as_str()) != Some(exp_d1) {
+                                reasons.push(format!(
+                                    "首选 IPv6 DNS 未生效 (期望: {}, 实际: {:?})",
+                                    exp_d1,
+                                    s.ipv6_dns_servers.first()
+                                ));
+                            }
+                        }
+                    } else if ipv6_dns_mode == "dhcp" && !s.ipv6_dns_dhcp_enabled {
+                        reasons.push("IPv6 DNS 自动获取未开启".to_string());
                     }
                 }
 

@@ -61,7 +61,42 @@ const PRESET_PROVIDERS: DnsProviderPreset[] = [
   },
 ];
 
+interface Ipv6DnsPreset {
+  name: string;
+  dns1: string;
+  dns2: string;
+}
+
+const PRESET_IPV6_PROVIDERS: Ipv6DnsPreset[] = [
+  {
+    name: '阿里IPv6 DNS',
+    dns1: '2400:3200::1',
+    dns2: '2400:3200:baba::1',
+  },
+  {
+    name: '腾讯DNSPod IPv6',
+    dns1: '2402:4e00::',
+    dns2: '2402:4e00:1::',
+  },
+  {
+    name: '百度IPv6 DNS',
+    dns1: '2400:da88::6666',
+    dns2: '',
+  },
+  {
+    name: 'Cloudflare IPv6',
+    dns1: '2606:4700:4700::1111',
+    dns2: '2606:4700:4700::1001',
+  },
+  {
+    name: 'Google IPv6',
+    dns1: '2001:4860:4860::8888',
+    dns2: '2001:4860:4860::8844',
+  },
+];
+
 function applyDnsPreset(preset: DnsProviderPreset) {
+  ipConfig.dnsMode = 'static';
   ipConfig.dns1 = preset.ip1;
   ipConfig.dns2 = preset.ip2;
   ipConfig.doh1 = {
@@ -74,6 +109,12 @@ function applyDnsPreset(preset: DnsProviderPreset) {
     template: preset.dohTemplate2,
     allowFallback: true,
   };
+}
+
+function applyIpv6DnsPreset(preset: Ipv6DnsPreset) {
+  ipConfig.ipv6DnsMode = 'static';
+  ipConfig.ipv6Dns1 = preset.dns1;
+  ipConfig.ipv6Dns2 = preset.dns2;
 }
 
 onMounted(() => {
@@ -132,12 +173,18 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 当前系统状态概览 (A-05) -->
+        <!-- 当前系统状态概览 (A-05, N-08 实时反映最新现场状态) -->
         <div v-if="currentSnapshot" class="snapshot-banner">
           <div class="snapshot-item">
-            <span class="label">当前模式:</span>
+            <span class="label">IP 模式:</span>
             <span :class="['badge', currentSnapshot.dhcpEnabled ? 'badge-dhcp' : 'badge-static']">
-              {{ currentSnapshot.dhcpEnabled ? 'DHCP 自动获取' : '静态地址' }}
+              {{ currentSnapshot.dhcpEnabled ? 'DHCP 自动' : '静态地址' }}
+            </span>
+          </div>
+          <div class="snapshot-item">
+            <span class="label">DNS 模式:</span>
+            <span :class="['badge', currentSnapshot.dnsDhcpEnabled ? 'badge-dhcp' : 'badge-static']">
+              {{ currentSnapshot.dnsDhcpEnabled ? 'DHCP 自动' : '静态 DNS' }}
             </span>
           </div>
           <div class="snapshot-item">
@@ -149,6 +196,10 @@ onMounted(() => {
             <span :class="['badge', currentSnapshot.ipv6Enabled ? 'badge-v6-on' : 'badge-v6-off']">
               {{ currentSnapshot.ipv6Enabled ? '已启用' : '已禁用' }}
             </span>
+          </div>
+          <div v-if="currentSnapshot.dnsServers && currentSnapshot.dnsServers.length > 0" class="snapshot-item">
+            <span class="label">当前 DNS:</span>
+            <span class="value">{{ currentSnapshot.dnsServers.join(', ') }}</span>
           </div>
           <div v-if="currentSnapshot.doh1 && currentSnapshot.doh1.mode !== 'off'" class="snapshot-item">
             <span class="label">首选 DoH:</span>
@@ -168,181 +219,254 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 网络配置表单 (A-07: 可选字段移除 required) -->
+        <!-- 网络配置表单 (A-07, N-07: 独立 IP/DNS 模式控制) -->
         <form @submit.prevent="applyConfig" class="network-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="input-ip">IPv4 地址 <span class="required">*</span></label>
-              <input
-                id="input-ip"
-                v-model="ipConfig.ip"
-                placeholder="例如 192.168.1.100"
-                required
-                :disabled="isLoading"
-                autocomplete="off"
-              />
+          <!-- IPv4 分配模式选择 (N-07) -->
+          <div class="mode-select-group">
+            <div class="mode-select-header">
+              <label for="select-ip-mode">IPv4 地址分配</label>
+              <span class="mode-hint">{{ ipConfig.ipMode === 'dhcp' ? '由 DHCP 服务器自动分配，修改 DNS 或 IPv6 时不破坏 DHCP' : '手动配置静态 IP、掩码及默认网关' }}</span>
             </div>
-
-            <div class="form-group">
-              <label for="input-mask">子网掩码 <span class="required">*</span></label>
-              <input
-                id="input-mask"
-                v-model="ipConfig.mask"
-                placeholder="例如 255.255.255.0"
-                required
+            <div class="select-wrapper">
+              <select
+                id="select-ip-mode"
+                v-model="ipConfig.ipMode"
                 :disabled="isLoading"
-                autocomplete="off"
-              />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="input-gateway">默认网关 <span class="optional">(可选)</span></label>
-            <input
-              id="input-gateway"
-              v-model="ipConfig.gateway"
-              placeholder="例如 192.168.1.1 (可留空)"
-              :disabled="isLoading"
-              autocomplete="off"
-            />
-          </div>
-
-          <!-- 常用公共 DNS / DoH 一键预设 -->
-          <div class="preset-section">
-            <div class="preset-label-bar">
-              <span class="preset-title">⚡ 常用公共 DNS / DoH 预设:</span>
-              <span class="preset-hint">一键填入地址与加密模板</span>
-            </div>
-            <div class="preset-chips">
-              <button
-                v-for="preset in PRESET_PROVIDERS"
-                :key="preset.name"
-                type="button"
-                class="preset-chip"
-                :disabled="isLoading"
-                @click="applyDnsPreset(preset)"
               >
-                {{ preset.name }}
-              </button>
+                <option value="dhcp">自动获取 (DHCP)</option>
+                <option value="static">手动配置 (静态)</option>
+              </select>
             </div>
           </div>
 
-          <!-- 首选 DNS 与 DoH 加密配置 (匹配 Windows 11 编辑 IP 设置) -->
-          <div class="dns-section-card">
-            <div class="form-group">
-              <label for="input-dns1">首选 DNS 服务器 <span class="optional">(可选)</span></label>
-              <input
-                id="input-dns1"
-                v-model="ipConfig.dns1"
-                placeholder="例如 223.5.5.5 或 8.8.8.8"
-                :disabled="isLoading"
-                autocomplete="off"
-              />
-            </div>
-
-            <div v-if="ipConfig.doh1" class="doh-panel">
+          <!-- DHCP 模式提示 vs 静态 IP 字段 -->
+          <div v-if="ipConfig.ipMode === 'dhcp'" class="dhcp-info-banner">
+            <span>ℹ️ 当前设置为 <strong>DHCP 自动获取 IP</strong>，修改 DNS 或 IPv6 不会将 IP 转为静态。</span>
+            <span v-if="ipConfig.ip" class="dhcp-lease-info">当前租约 IP: {{ ipConfig.ip }} / {{ ipConfig.mask }}</span>
+          </div>
+          <div v-else class="static-ip-fields">
+            <div class="form-row">
               <div class="form-group">
-                <label for="select-doh1">DNS over HTTPS</label>
-                <div class="select-wrapper">
-                  <select
-                    id="select-doh1"
-                    v-model="ipConfig.doh1.mode"
-                    :disabled="isLoading"
-                  >
-                    <option value="off">关</option>
-                    <option value="auto">开(自动)</option>
-                    <option value="manual">开(手动模板)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div v-if="ipConfig.doh1.mode === 'manual'" class="form-group doh-template-group">
-                <label for="input-doh1-template">DNS over HTTPS 模板 <span class="required">*</span></label>
+                <label for="input-ip">IPv4 地址 <span class="required">*</span></label>
                 <input
-                  id="input-doh1-template"
-                  v-model="ipConfig.doh1.template"
-                  placeholder="https://doh.pub/dns-query"
+                  id="input-ip"
+                  v-model="ipConfig.ip"
+                  placeholder="例如 192.168.1.100"
+                  :required="ipConfig.ipMode === 'static'"
                   :disabled="isLoading"
                   autocomplete="off"
                 />
               </div>
 
-              <div v-if="ipConfig.doh1.mode !== 'off'" class="switch-row">
-                <span class="switch-label-text">失败时使用未加密请求</span>
-                <label class="fluent-switch">
-                  <input
-                    type="checkbox"
-                    v-model="ipConfig.doh1.allowFallback"
-                    :disabled="isLoading"
-                  />
-                  <span class="slider"></span>
-                  <span class="switch-status">{{ ipConfig.doh1.allowFallback ? '开' : '关' }}</span>
-                </label>
+              <div class="form-group">
+                <label for="input-mask">子网掩码 <span class="required">*</span></label>
+                <input
+                  id="input-mask"
+                  v-model="ipConfig.mask"
+                  placeholder="例如 255.255.255.0"
+                  :required="ipConfig.ipMode === 'static'"
+                  :disabled="isLoading"
+                  autocomplete="off"
+                />
               </div>
             </div>
-          </div>
 
-          <!-- 备用 DNS 与 DoH 加密配置 (匹配 Windows 11 编辑 IP 设置) -->
-          <div class="dns-section-card">
             <div class="form-group">
-              <label for="input-dns2">备用 DNS 服务器 <span class="optional">(可选)</span></label>
+              <label for="input-gateway">默认网关 <span class="optional">(可选)</span></label>
               <input
-                id="input-dns2"
-                v-model="ipConfig.dns2"
-                placeholder="例如 223.6.6.6 或 8.8.4.4"
+                id="input-gateway"
+                v-model="ipConfig.gateway"
+                placeholder="例如 192.168.1.1 (可留空)"
                 :disabled="isLoading"
                 autocomplete="off"
               />
             </div>
+          </div>
 
-            <div v-if="ipConfig.doh2" class="doh-panel">
-              <div class="form-group">
-                <label for="select-doh2">DNS over HTTPS</label>
-                <div class="select-wrapper">
-                  <select
-                    id="select-doh2"
-                    v-model="ipConfig.doh2.mode"
-                    :disabled="isLoading"
-                  >
-                    <option value="off">关</option>
-                    <option value="auto">开(自动)</option>
-                    <option value="manual">开(手动模板)</option>
-                  </select>
-                </div>
+          <!-- DNS 分配模式选择 (N-07) -->
+          <div class="mode-select-group">
+            <div class="mode-select-header">
+              <label for="select-dns-mode">DNS 服务器分配</label>
+              <span class="mode-hint">{{ ipConfig.dnsMode === 'dhcp' ? '由 DHCP 服务器自动提供 DNS 地址' : '手动指定首选/备用 DNS 与 DoH 加密' }}</span>
+            </div>
+            <div class="select-wrapper">
+              <select
+                id="select-dns-mode"
+                v-model="ipConfig.dnsMode"
+                :disabled="isLoading"
+              >
+                <option value="dhcp">自动获取 (DHCP)</option>
+                <option value="static">手动配置 (静态 / DoH)</option>
+              </select>
+            </div>
+          </div>
+
+          <div v-if="ipConfig.dnsMode === 'dhcp'" class="dhcp-info-banner">
+            <span>ℹ️ 当前设置为 <strong>自动获取 DNS (DHCP)</strong>，无需配置自定义 DNS 或 DoH。</span>
+          </div>
+
+          <template v-else>
+            <!-- 常用公共 DNS / DoH 一键预设 -->
+            <div class="preset-section">
+              <div class="preset-label-bar">
+                <span class="preset-title">⚡ 常用公共 DNS / DoH 预设:</span>
+                <span class="preset-hint">点击将自动切换至静态 DNS 并填入加密模板</span>
               </div>
+              <div class="preset-chips">
+                <button
+                  v-for="preset in PRESET_PROVIDERS"
+                  :key="preset.name"
+                  type="button"
+                  class="preset-chip"
+                  :disabled="isLoading"
+                  @click="applyDnsPreset(preset)"
+                >
+                  {{ preset.name }}
+                </button>
+              </div>
+            </div>
 
-              <div v-if="ipConfig.doh2.mode === 'manual'" class="form-group doh-template-group">
-                <label for="input-doh2-template">DNS over HTTPS 模板 <span class="required">*</span></label>
+            <!-- 首选 DNS 与 DoH 加密配置 (匹配 Windows 11 编辑 IP 设置) -->
+            <div class="dns-section-card">
+              <div class="form-group">
+                <label for="input-dns1">首选 DNS 服务器 <span class="optional">(可选)</span></label>
                 <input
-                  id="input-doh2-template"
-                  v-model="ipConfig.doh2.template"
-                  placeholder="https://dns.alidns.com/dns-query"
+                  id="input-dns1"
+                  v-model="ipConfig.dns1"
+                  placeholder="例如 223.5.5.5 或 8.8.8.8"
                   :disabled="isLoading"
                   autocomplete="off"
                 />
               </div>
 
-              <div v-if="ipConfig.doh2.mode !== 'off'" class="switch-row">
-                <span class="switch-label-text">失败时使用未加密请求</span>
-                <label class="fluent-switch">
+              <div v-if="ipConfig.doh1" class="doh-panel">
+                <div class="form-group">
+                  <label for="select-doh1">DNS over HTTPS</label>
+                  <div class="select-wrapper">
+                    <select
+                      id="select-doh1"
+                      v-model="ipConfig.doh1.mode"
+                      :disabled="isLoading"
+                    >
+                      <option value="off">关</option>
+                      <option value="auto">开(自动)</option>
+                      <option value="manual">开(手动模板)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div v-if="ipConfig.doh1.mode === 'manual'" class="form-group doh-template-group">
+                  <label for="input-doh1-template">DNS over HTTPS 模板 <span class="required">*</span></label>
                   <input
-                    type="checkbox"
-                    v-model="ipConfig.doh2.allowFallback"
+                    id="input-doh1-template"
+                    v-model="ipConfig.doh1.template"
+                    placeholder="https://doh.pub/dns-query"
                     :disabled="isLoading"
+                    autocomplete="off"
                   />
-                  <span class="slider"></span>
-                  <span class="switch-status">{{ ipConfig.doh2.allowFallback ? '开' : '关' }}</span>
-                </label>
+                </div>
+
+                <div v-if="ipConfig.doh1.mode !== 'off'" class="switch-row">
+                  <span class="switch-label-text">失败时使用未加密请求</span>
+                  <label class="fluent-switch">
+                    <input
+                      type="checkbox"
+                      v-model="ipConfig.doh1.allowFallback"
+                      :disabled="isLoading"
+                    />
+                    <span class="slider"></span>
+                    <span class="switch-status">{{ ipConfig.doh1.allowFallback ? '开' : '关' }}</span>
+                  </label>
+                </div>
+              </div>
+              <div v-else class="doh-placeholder">
+                <button
+                  type="button"
+                  class="btn-text-sm"
+                  :disabled="isLoading"
+                  @click="ipConfig.doh1 = { mode: 'off', template: '', allowFallback: true }"
+                >
+                  + 配置首选 DNS over HTTPS (DoH)
+                </button>
               </div>
             </div>
-          </div>
 
-          <!-- IPv6 绑定设置 (匹配 Windows 11 编辑 IP 设置) -->
+            <!-- 备用 DNS 与 DoH 加密配置 (匹配 Windows 11 编辑 IP 设置) -->
+            <div class="dns-section-card">
+              <div class="form-group">
+                <label for="input-dns2">备用 DNS 服务器 <span class="optional">(可选)</span></label>
+                <input
+                  id="input-dns2"
+                  v-model="ipConfig.dns2"
+                  placeholder="例如 223.6.6.6 或 8.8.4.4"
+                  :disabled="isLoading"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div v-if="ipConfig.doh2" class="doh-panel">
+                <div class="form-group">
+                  <label for="select-doh2">DNS over HTTPS</label>
+                  <div class="select-wrapper">
+                    <select
+                      id="select-doh2"
+                      v-model="ipConfig.doh2.mode"
+                      :disabled="isLoading"
+                    >
+                      <option value="off">关</option>
+                      <option value="auto">开(自动)</option>
+                      <option value="manual">开(手动模板)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div v-if="ipConfig.doh2.mode === 'manual'" class="form-group doh-template-group">
+                  <label for="input-doh2-template">DNS over HTTPS 模板 <span class="required">*</span></label>
+                  <input
+                    id="input-doh2-template"
+                    v-model="ipConfig.doh2.template"
+                    placeholder="https://dns.alidns.com/dns-query"
+                    :disabled="isLoading"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div v-if="ipConfig.doh2.mode !== 'off'" class="switch-row">
+                  <span class="switch-label-text">失败时使用未加密请求</span>
+                  <label class="fluent-switch">
+                    <input
+                      type="checkbox"
+                      v-model="ipConfig.doh2.allowFallback"
+                      :disabled="isLoading"
+                    />
+                    <span class="slider"></span>
+                    <span class="switch-status">{{ ipConfig.doh2.allowFallback ? '开' : '关' }}</span>
+                  </label>
+                </div>
+              </div>
+              <div v-else class="doh-placeholder">
+                <button
+                  type="button"
+                  class="btn-text-sm"
+                  :disabled="isLoading"
+                  @click="ipConfig.doh2 = { mode: 'off', template: '', allowFallback: true }"
+                >
+                  + 配置备用 DNS over HTTPS (DoH)
+                </button>
+              </div>
+            </div>
+
+            <p class="doh-system-hint">
+              提示：Windows 11 的 DNS over HTTPS (DoH) 加密按服务器 IP 生效于全系统，相同 IP 的加密策略将同步作用于所有网络适配器。
+            </p>
+          </template>
+
+          <!-- IPv6 协议与地址设置 (与 IPv4 保持一致的读取与配置能力) -->
           <div class="ipv6-section-card">
             <div class="ipv6-header">
               <div>
-                <h3 class="ipv6-title">IPv6</h3>
-                <p class="ipv6-desc">启用或禁用此适配器的 IPv6 协议组件 (ms_tcpip6)</p>
+                <h3 class="ipv6-title">IPv6 协议与配置</h3>
+                <p class="ipv6-desc">启用或禁用此适配器的 IPv6 协议组件 (ms_tcpip6)，支持自动获取或手动配置 IPv6 地址及 DNS</p>
               </div>
               <label class="fluent-switch">
                 <input
@@ -351,8 +475,144 @@ onMounted(() => {
                   :disabled="isLoading"
                 />
                 <span class="slider"></span>
-                <span class="switch-status">{{ ipConfig.ipv6Enabled ? '开' : '关' }}</span>
+                <span class="switch-status">{{ ipConfig.ipv6Enabled === undefined ? '保持' : (ipConfig.ipv6Enabled ? '开' : '关') }}</span>
               </label>
+            </div>
+
+            <!-- IPv6 展开详细配置区域 (当启用 IPv6 时可用) -->
+            <div v-if="ipConfig.ipv6Enabled !== false" class="ipv6-config-body">
+              <!-- IPv6 地址分配模式 -->
+              <div class="mode-select-group">
+                <div class="mode-select-header">
+                  <label for="select-ipv6-mode">IPv6 地址分配</label>
+                  <span class="mode-hint">{{ ipConfig.ipv6Mode === 'dhcp' ? '由路由器通告 (SLAAC) 或 DHCPv6 自动分配' : '手动配置静态 IPv6 地址、前缀长度及默认网关' }}</span>
+                </div>
+                <div class="select-wrapper">
+                  <select
+                    id="select-ipv6-mode"
+                    v-model="ipConfig.ipv6Mode"
+                    :disabled="isLoading"
+                  >
+                    <option value="dhcp">自动获取 (DHCP / 路由器发现)</option>
+                    <option value="static">手动配置 (静态 IPv6)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- IPv6 地址字段 -->
+              <div v-if="ipConfig.ipv6Mode === 'dhcp'" class="dhcp-info-banner">
+                <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 地址 (DHCPv6 / SLAAC)</strong>。</span>
+                <span v-if="ipConfig.ipv6Ip" class="dhcp-lease-info">当前分配 IPv6: {{ ipConfig.ipv6Ip }} / {{ ipConfig.ipv6Prefix || 64 }}</span>
+              </div>
+              <div v-else class="static-ip-fields">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="input-ipv6-ip">IPv6 地址 <span class="required">*</span></label>
+                    <input
+                      id="input-ipv6-ip"
+                      v-model="ipConfig.ipv6Ip"
+                      placeholder="例如 2001:db8::1 或 fe80::1"
+                      :required="ipConfig.ipv6Mode === 'static'"
+                      :disabled="isLoading"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="input-ipv6-prefix">子网前缀长度 <span class="required">*</span></label>
+                    <input
+                      id="input-ipv6-prefix"
+                      v-model="ipConfig.ipv6Prefix"
+                      type="number"
+                      min="1"
+                      max="128"
+                      placeholder="默认 64"
+                      :required="ipConfig.ipv6Mode === 'static'"
+                      :disabled="isLoading"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="input-ipv6-gateway">IPv6 默认网关 <span class="optional">(可选)</span></label>
+                  <input
+                    id="input-ipv6-gateway"
+                    v-model="ipConfig.ipv6Gateway"
+                    placeholder="例如 fe80::1 或 2001:db8::fffe (可留空)"
+                    :disabled="isLoading"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+
+              <!-- IPv6 DNS 分配模式 -->
+              <div class="mode-select-group">
+                <div class="mode-select-header">
+                  <label for="select-ipv6-dns-mode">IPv6 DNS 服务器分配</label>
+                  <span class="mode-hint">{{ ipConfig.ipv6DnsMode === 'dhcp' ? '自动获取 IPv6 DNS' : '手动指定 IPv6 首选/备用 DNS' }}</span>
+                </div>
+                <div class="select-wrapper">
+                  <select
+                    id="select-ipv6-dns-mode"
+                    v-model="ipConfig.ipv6DnsMode"
+                    :disabled="isLoading"
+                  >
+                    <option value="dhcp">自动获取 (DHCPv6)</option>
+                    <option value="static">手动配置 (静态 IPv6 DNS)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div v-if="ipConfig.ipv6DnsMode === 'dhcp'" class="dhcp-info-banner">
+                <span>ℹ️ 当前设置为 <strong>自动获取 IPv6 DNS</strong>。</span>
+              </div>
+              <template v-else>
+                <!-- 常用公共 IPv6 DNS 预设 -->
+                <div class="preset-section">
+                  <div class="preset-label-bar">
+                    <span class="preset-title">⚡ 常用公共 IPv6 DNS 预设:</span>
+                    <span class="preset-hint">点击快速填入权威 IPv6 DNS</span>
+                  </div>
+                  <div class="preset-chips">
+                    <button
+                      v-for="preset in PRESET_IPV6_PROVIDERS"
+                      :key="preset.name"
+                      type="button"
+                      class="preset-chip"
+                      :disabled="isLoading"
+                      @click="applyIpv6DnsPreset(preset)"
+                    >
+                      {{ preset.name }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- IPv6 DNS 输入字段 -->
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="input-ipv6-dns1">首选 IPv6 DNS <span class="optional">(可选)</span></label>
+                    <input
+                      id="input-ipv6-dns1"
+                      v-model="ipConfig.ipv6Dns1"
+                      placeholder="例如 2400:3200::1 或 2606:4700:4700::1111"
+                      :disabled="isLoading"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="input-ipv6-dns2">备用 IPv6 DNS <span class="optional">(可选)</span></label>
+                    <input
+                      id="input-ipv6-dns2"
+                      v-model="ipConfig.ipv6Dns2"
+                      placeholder="例如 2400:3200:baba::1 或 2606:4700:4700::1001"
+                      :disabled="isLoading"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -370,7 +630,7 @@ onMounted(() => {
             <button
               type="button"
               class="btn btn-secondary"
-              :disabled="isLoading || !ipConfig.ip"
+              :disabled="isLoading || (ipConfig.ipMode === 'static' && !ipConfig.ip)"
               @click="saveConfig(ipConfig)"
             >
               保存至预设
@@ -444,6 +704,22 @@ onMounted(() => {
                 <span v-if="item.dns2" class="history-dns">DNS2: {{ item.dns2 }}</span>
                 <span v-if="item.ipv6Enabled !== undefined" :class="['badge-sm', item.ipv6Enabled ? 'badge-v6-on' : 'badge-v6-off']">
                   IPv6: {{ item.ipv6Enabled ? '开' : '关' }}
+                </span>
+                <span v-if="item.ipv6Ip" class="history-ip">IPv6: {{ item.ipv6Ip }}/{{ item.ipv6Prefix || 64 }}</span>
+                <span v-if="item.ipv6Gateway" class="history-gw">IPv6网关: {{ item.ipv6Gateway }}</span>
+                <span v-if="item.ipv6Dns1" class="history-dns">IPv6 DNS1: {{ item.ipv6Dns1 }}</span>
+                <span v-if="item.ipv6Dns2" class="history-dns">IPv6 DNS2: {{ item.ipv6Dns2 }}</span>
+                <span v-if="item.ipMode" :class="['badge-sm', item.ipMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
+                  IP: {{ item.ipMode === 'dhcp' ? 'DHCP' : '静态' }}
+                </span>
+                <span v-if="item.dnsMode" :class="['badge-sm', item.dnsMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
+                  DNS: {{ item.dnsMode === 'dhcp' ? 'DHCP' : '静态' }}
+                </span>
+                <span v-if="item.ipv6Mode" :class="['badge-sm', item.ipv6Mode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
+                  IPv6 IP: {{ item.ipv6Mode === 'dhcp' ? 'DHCP' : '静态' }}
+                </span>
+                <span v-if="item.ipv6DnsMode" :class="['badge-sm', item.ipv6DnsMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
+                  IPv6 DNS: {{ item.ipv6DnsMode === 'dhcp' ? 'DHCP' : '静态' }}
                 </span>
                 <span v-if="item.doh1 && item.doh1.mode !== 'off'" class="badge-sm badge-doh">
                   DoH1: {{ item.doh1.mode === 'manual' ? '手动' : '自动' }}
@@ -830,6 +1106,54 @@ input:disabled, select:disabled {
   font-weight: 600;
 }
 
+/* 模式选择组样式 (N-07) */
+.mode-select-group {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mode-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.mode-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.dhcp-info-banner {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dhcp-lease-info {
+  font-size: 0.8rem;
+  color: #2563eb;
+  font-family: Consolas, Monaco, monospace;
+}
+
+.static-ip-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .empty-history {
   padding: 2.5rem 1rem;
   text-align: center;
@@ -1128,5 +1452,46 @@ input:disabled, select:disabled {
 
 .history-dns {
   color: #0369a1;
+}
+
+.doh-system-hint {
+  font-size: 0.775rem;
+  color: #64748b;
+  margin: -0.25rem 0 0.5rem 0.25rem;
+  line-height: 1.4;
+}
+
+.doh-placeholder {
+  padding-top: 0.25rem;
+}
+
+.btn-text-sm {
+  background: transparent;
+  border: none;
+  color: #0284c7;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-text-sm:hover:not(:disabled) {
+  background: #e0f2fe;
+}
+
+.btn-text-sm:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.ipv6-config-body {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 </style>

@@ -1,7 +1,13 @@
 import { ref, reactive, watch } from 'vue';
 import type { AdapterInfo, AdapterSnapshot, Ipv4Config, OperationResult } from '../types/network';
 import { networkClient } from '../services/networkClient';
-import { validateIpAddress, validateSubnetMask, validateGatewayInSubnet } from '../utils/validation';
+import {
+  validateIpAddress,
+  validateSubnetMask,
+  validateGatewayInSubnet,
+  validateIpv6Address,
+  validateIpv6Prefix,
+} from '../utils/validation';
 
 export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   const adapters = ref<AdapterInfo[]>([]);
@@ -30,6 +36,15 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       allowFallback: true,
     },
     ipv6Enabled: true,
+    ipMode: 'static',
+    dnsMode: 'static',
+    ipv6Mode: 'dhcp',
+    ipv6Ip: '',
+    ipv6Prefix: 64,
+    ipv6Gateway: '',
+    ipv6DnsMode: 'dhcp',
+    ipv6Dns1: '',
+    ipv6Dns2: '',
   });
 
   // 每个适配器的独立草稿缓存，防止网卡切换时的配置串写 (A-08, R-04)
@@ -60,6 +75,15 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       allowFallback: true,
     };
     ipConfig.ipv6Enabled = true;
+    ipConfig.ipMode = 'static';
+    ipConfig.dnsMode = 'static';
+    ipConfig.ipv6Mode = 'dhcp';
+    ipConfig.ipv6Ip = '';
+    ipConfig.ipv6Prefix = 64;
+    ipConfig.ipv6Gateway = '';
+    ipConfig.ipv6DnsMode = 'dhcp';
+    ipConfig.ipv6Dns1 = '';
+    ipConfig.ipv6Dns2 = '';
     currentSnapshot.value = null;
   }
 
@@ -124,11 +148,20 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         ? { ...snapshot.doh2 }
         : { mode: 'off', template: '', allowFallback: true };
       ipConfig.ipv6Enabled = typeof snapshot.ipv6Enabled === 'boolean' ? snapshot.ipv6Enabled : true;
+      ipConfig.ipMode = snapshot.dhcpEnabled ? 'dhcp' : 'static';
+      ipConfig.dnsMode = snapshot.dnsDhcpEnabled ? 'dhcp' : 'static';
+      ipConfig.ipv6Mode = snapshot.ipv6DhcpEnabled !== false ? 'dhcp' : 'static';
+      ipConfig.ipv6Ip = snapshot.ipv6Ip || '';
+      ipConfig.ipv6Prefix = typeof snapshot.ipv6Prefix === 'number' ? snapshot.ipv6Prefix : 64;
+      ipConfig.ipv6Gateway = snapshot.ipv6Gateway || '';
+      ipConfig.ipv6DnsMode = snapshot.ipv6DnsDhcpEnabled !== false ? 'dhcp' : 'static';
+      ipConfig.ipv6Dns1 = snapshot.ipv6Dns1 || '';
+      ipConfig.ipv6Dns2 = snapshot.ipv6Dns2 || '';
 
       // 同步更新草稿
       adapterDrafts.set(targetAdapter, JSON.parse(JSON.stringify(ipConfig)));
 
-      statusMsg.value = `已读取 [${targetAdapter}] 当前配置 (${snapshot.dhcpEnabled ? 'DHCP 自动分配' : '静态配置'})`;
+      statusMsg.value = `已读取 [${targetAdapter}] 当前配置 (IPv4: ${snapshot.dhcpEnabled ? 'DHCP' : '静态'}, IPv6: ${snapshot.ipv6DhcpEnabled !== false ? 'DHCP' : '静态'})`;
       statusType.value = 'success';
     } catch (err: unknown) {
       if (reqId !== requestCounter || selectedAdapter.value !== targetAdapter) {
@@ -166,9 +199,18 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         ipConfig.gateway = draft.gateway;
         ipConfig.dns1 = draft.dns1;
         ipConfig.dns2 = draft.dns2;
-        ipConfig.doh1 = draft.doh1 ? { ...draft.doh1 } : { mode: 'off', template: '', allowFallback: true };
-        ipConfig.doh2 = draft.doh2 ? { ...draft.doh2 } : { mode: 'off', template: '', allowFallback: true };
-        ipConfig.ipv6Enabled = typeof draft.ipv6Enabled === 'boolean' ? draft.ipv6Enabled : true;
+        ipConfig.doh1 = draft.doh1 ? { ...draft.doh1 } : undefined;
+        ipConfig.doh2 = draft.doh2 ? { ...draft.doh2 } : undefined;
+        ipConfig.ipv6Enabled = typeof draft.ipv6Enabled === 'boolean' ? draft.ipv6Enabled : undefined;
+        ipConfig.ipMode = draft.ipMode || (currentSnapshot.value?.dhcpEnabled ? 'dhcp' : 'static');
+        ipConfig.dnsMode = draft.dnsMode || (currentSnapshot.value?.dnsDhcpEnabled ? 'dhcp' : 'static');
+        ipConfig.ipv6Mode = draft.ipv6Mode || (currentSnapshot.value?.ipv6DhcpEnabled !== false ? 'dhcp' : 'static');
+        ipConfig.ipv6Ip = draft.ipv6Ip || '';
+        ipConfig.ipv6Prefix = typeof draft.ipv6Prefix === 'number' || typeof draft.ipv6Prefix === 'string' ? draft.ipv6Prefix : 64;
+        ipConfig.ipv6Gateway = draft.ipv6Gateway || '';
+        ipConfig.ipv6DnsMode = draft.ipv6DnsMode || (currentSnapshot.value?.ipv6DnsDhcpEnabled !== false ? 'dhcp' : 'static');
+        ipConfig.ipv6Dns1 = draft.ipv6Dns1 || '';
+        ipConfig.ipv6Dns2 = draft.ipv6Dns2 || '';
 
         // 确保快照与当前网卡严格绑定，绝不残留旧网卡的快照 (A-08, R-04, F-06)
         if (currentSnapshot.value?.adapterName !== newAdapter) {
@@ -211,87 +253,143 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       return;
     }
 
-    // 必填项校验
-    if (!ipConfig.ip.trim()) {
-      statusMsg.value = 'IP 地址不能为空';
-      statusType.value = 'warning';
-      return;
-    }
-
-    if (!validateIpAddress(ipConfig.ip, false)) {
-      statusMsg.value = 'IP 地址格式不正确 (必须为四段 0-255 十进制数且无前导零)';
-      statusType.value = 'warning';
-      return;
-    }
-
-    if (!ipConfig.mask.trim()) {
-      statusMsg.value = '子网掩码不能为空';
-      statusType.value = 'warning';
-      return;
-    }
-
-    if (!validateSubnetMask(ipConfig.mask)) {
-      statusMsg.value = '子网掩码无效 (必须为连续二进制 1，如 255.255.255.0)';
-      statusType.value = 'warning';
-      return;
-    }
-
-    // 可选字段校验 (A-07)
-    if (ipConfig.gateway.trim()) {
-      const gwCheck = validateGatewayInSubnet(ipConfig.ip, ipConfig.mask, ipConfig.gateway);
-      if (!gwCheck.valid) {
-        statusMsg.value = gwCheck.error || '网关配置无效';
+    // 静态 IP 必填项校验 (N-07)
+    if (ipConfig.ipMode === 'static') {
+      if (!ipConfig.ip.trim()) {
+        statusMsg.value = '静态 IP 地址不能为空';
         statusType.value = 'warning';
         return;
       }
-    }
 
-    // DNS 组合校验：不允许单设 DNS2 而不设 DNS1 (R-02)
-    if (!ipConfig.dns1.trim() && ipConfig.dns2.trim()) {
-      statusMsg.value = '若配置辅助 DNS，必须先配置首选 DNS (DNS1)';
-      statusType.value = 'warning';
-      return;
-    }
-
-    if (ipConfig.dns1.trim() && !validateIpAddress(ipConfig.dns1, false)) {
-      statusMsg.value = '首选 DNS (DNS1) 格式不正确';
-      statusType.value = 'warning';
-      return;
-    }
-
-    if (ipConfig.dns2.trim() && !validateIpAddress(ipConfig.dns2, false)) {
-      statusMsg.value = '辅助 DNS (DNS2) 格式不正确';
-      statusType.value = 'warning';
-      return;
-    }
-
-    // DoH 语义校验
-    if (ipConfig.doh1 && ipConfig.doh1.mode !== 'off') {
-      if (!ipConfig.dns1.trim()) {
-        statusMsg.value = '启用了首选 DNS 的 DoH 加密，但未配置首选 DNS 服务器 IP';
+      if (!validateIpAddress(ipConfig.ip, false)) {
+        statusMsg.value = 'IP 地址格式不正确 (必须为四段 0-255 十进制数且无前导零)';
         statusType.value = 'warning';
         return;
       }
-      if (ipConfig.doh1.mode === 'manual') {
-        const t = ipConfig.doh1.template.trim();
-        if (!t || !t.startsWith('https://')) {
-          statusMsg.value = '首选 DNS 的 DoH 模板必须是以 https:// 开头的合法 URL (如 https://doh.pub/dns-query)';
+
+      if (!ipConfig.mask.trim()) {
+        statusMsg.value = '子网掩码不能为空';
+        statusType.value = 'warning';
+        return;
+      }
+
+      if (!validateSubnetMask(ipConfig.mask)) {
+        statusMsg.value = '子网掩码无效 (必须为连续二进制 1，如 255.255.255.0)';
+        statusType.value = 'warning';
+        return;
+      }
+
+      // 可选字段校验 (A-07)
+      if (ipConfig.gateway.trim()) {
+        const gwCheck = validateGatewayInSubnet(ipConfig.ip, ipConfig.mask, ipConfig.gateway);
+        if (!gwCheck.valid) {
+          statusMsg.value = gwCheck.error || '网关配置无效';
           statusType.value = 'warning';
           return;
         }
       }
     }
 
-    if (ipConfig.doh2 && ipConfig.doh2.mode !== 'off') {
-      if (!ipConfig.dns2.trim()) {
-        statusMsg.value = '启用了备用 DNS 的 DoH 加密，但未配置备用 DNS 服务器 IP';
+    // DNS 组合与 DoH 校验 (仅在静态模式下校验，N-07)
+    if (ipConfig.dnsMode === 'static') {
+      // DNS 组合校验：不允许单设 DNS2 而不设 DNS1 (R-02)
+      if (!ipConfig.dns1.trim() && ipConfig.dns2.trim()) {
+        statusMsg.value = '若配置辅助 DNS，必须先配置首选 DNS (DNS1)';
         statusType.value = 'warning';
         return;
       }
-      if (ipConfig.doh2.mode === 'manual') {
-        const t = ipConfig.doh2.template.trim();
-        if (!t || !t.startsWith('https://')) {
-          statusMsg.value = '备用 DNS 的 DoH 模板必须是以 https:// 开头的合法 URL (如 https://dns.alidns.com/dns-query)';
+
+      if (ipConfig.dns1.trim() && !validateIpAddress(ipConfig.dns1, false)) {
+        statusMsg.value = '首选 DNS (DNS1) 格式不正确';
+        statusType.value = 'warning';
+        return;
+      }
+
+      if (ipConfig.dns2.trim() && !validateIpAddress(ipConfig.dns2, false)) {
+        statusMsg.value = '辅助 DNS (DNS2) 格式不正确';
+        statusType.value = 'warning';
+        return;
+      }
+
+      // DoH 语义校验
+      if (ipConfig.doh1 && ipConfig.doh1.mode !== 'off') {
+        if (!ipConfig.dns1.trim()) {
+          statusMsg.value = '启用了首选 DNS 的 DoH 加密，但未配置首选 DNS 服务器 IP';
+          statusType.value = 'warning';
+          return;
+        }
+        if (ipConfig.doh1.mode === 'manual') {
+          const t = ipConfig.doh1.template.trim();
+          if (!t || !t.startsWith('https://')) {
+            statusMsg.value = '首选 DNS 的 DoH 模板必须是以 https:// 开头的合法 URL (如 https://doh.pub/dns-query)';
+            statusType.value = 'warning';
+            return;
+          }
+        }
+      }
+
+      if (ipConfig.doh2 && ipConfig.doh2.mode !== 'off') {
+        if (!ipConfig.dns2.trim()) {
+          statusMsg.value = '启用了备用 DNS 的 DoH 加密，但未配置备用 DNS 服务器 IP';
+          statusType.value = 'warning';
+          return;
+        }
+        if (ipConfig.doh2.mode === 'manual') {
+          const t = ipConfig.doh2.template.trim();
+          if (!t || !t.startsWith('https://')) {
+            statusMsg.value = '备用 DNS 的 DoH 模板必须是以 https:// 开头的合法 URL (如 https://dns.alidns.com/dns-query)';
+            statusType.value = 'warning';
+            return;
+          }
+        }
+      }
+    }
+
+    // IPv6 校验 (当 IPv6 启用或未显式禁用时)
+    if (ipConfig.ipv6Enabled !== false) {
+      if (ipConfig.ipv6Mode === 'static') {
+        if (!ipConfig.ipv6Ip?.trim()) {
+          statusMsg.value = '静态 IPv6 地址不能为空';
+          statusType.value = 'warning';
+          return;
+        }
+
+        if (!validateIpv6Address(ipConfig.ipv6Ip)) {
+          statusMsg.value = 'IPv6 地址格式不正确 (例如 2001:db8::1 或 fe80::1)';
+          statusType.value = 'warning';
+          return;
+        }
+
+        if (!validateIpv6Prefix(ipConfig.ipv6Prefix)) {
+          statusMsg.value = 'IPv6 子网前缀长度必须为 1 到 128 之间的整数 (例如 64)';
+          statusType.value = 'warning';
+          return;
+        }
+
+        if (ipConfig.ipv6Gateway?.trim()) {
+          if (!validateIpv6Address(ipConfig.ipv6Gateway)) {
+            statusMsg.value = 'IPv6 默认网关格式不正确';
+            statusType.value = 'warning';
+            return;
+          }
+        }
+      }
+
+      if (ipConfig.ipv6DnsMode === 'static') {
+        if (!ipConfig.ipv6Dns1?.trim() && ipConfig.ipv6Dns2?.trim()) {
+          statusMsg.value = '若配置辅助 IPv6 DNS，必须先配置首选 IPv6 DNS (DNS1)';
+          statusType.value = 'warning';
+          return;
+        }
+
+        if (ipConfig.ipv6Dns1?.trim() && !validateIpv6Address(ipConfig.ipv6Dns1)) {
+          statusMsg.value = '首选 IPv6 DNS (DNS1) 格式不正确';
+          statusType.value = 'warning';
+          return;
+        }
+
+        if (ipConfig.ipv6Dns2?.trim() && !validateIpv6Address(ipConfig.ipv6Dns2)) {
+          statusMsg.value = '辅助 IPv6 DNS (DNS2) 格式不正确';
           statusType.value = 'warning';
           return;
         }
@@ -321,6 +419,15 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
           allowFallback: ipConfig.doh2.allowFallback,
         } : undefined,
         ipv6Enabled: ipConfig.ipv6Enabled,
+        ipMode: ipConfig.ipMode,
+        dnsMode: ipConfig.dnsMode,
+        ipv6Mode: ipConfig.ipv6Mode,
+        ipv6Ip: ipConfig.ipv6Ip?.trim(),
+        ipv6Prefix: ipConfig.ipv6Prefix !== undefined && ipConfig.ipv6Prefix !== '' ? Number(ipConfig.ipv6Prefix) : undefined,
+        ipv6Gateway: ipConfig.ipv6Gateway?.trim(),
+        ipv6DnsMode: ipConfig.ipv6DnsMode,
+        ipv6Dns1: ipConfig.ipv6Dns1?.trim(),
+        ipv6Dns2: ipConfig.ipv6Dns2?.trim(),
       };
 
       const result: OperationResult = await networkClient.applyAdapterIpv4Config(payload);
@@ -335,11 +442,18 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
           onConfigApplied(payload);
         }
       } else {
+        // N-08: 失败或状态未知时，无论是否成功回滚，必须保留并更新实际现场快照与详细诊断；若现场快照读回失败则显式清空旧快照
+        if (result.snapshot) {
+          currentSnapshot.value = result.snapshot;
+        } else {
+          currentSnapshot.value = null;
+        }
+        const rollbackInfo = result.rollbackMessage ? `【恢复诊断】${result.rollbackMessage}` : '';
         if (result.rolledBack) {
-          statusMsg.value = `应用失败: ${result.message}。${result.rollbackMessage || '已执行自动回滚。'}`;
+          statusMsg.value = `应用失败: ${result.message}。${rollbackInfo || '已执行自动回滚。'}`;
           statusType.value = 'warning';
         } else {
-          statusMsg.value = `应用失败: ${result.message}`;
+          statusMsg.value = `应用失败: ${result.message}。${rollbackInfo || '回滚未完成或状态未知！'}`;
           statusType.value = 'error';
         }
       }
@@ -374,7 +488,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       adapterDrafts.set(selectedAdapter.value, JSON.parse(JSON.stringify(ipConfig)));
     }
 
-    // 准备目标历史草稿
+    // 准备目标历史草稿 (N-10: 缺失的扩展字段严禁擅自补为 true/off，保持 undefined)
     const historyDraft: Ipv4Config = {
       adapter: targetAdapter,
       ip: cfg.ip,
@@ -382,9 +496,18 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       gateway: cfg.gateway || '',
       dns1: cfg.dns1 || '',
       dns2: cfg.dns2 || '',
-      doh1: cfg.doh1 ? { ...cfg.doh1 } : { mode: 'off', template: '', allowFallback: true },
-      doh2: cfg.doh2 ? { ...cfg.doh2 } : { mode: 'off', template: '', allowFallback: true },
-      ipv6Enabled: typeof cfg.ipv6Enabled === 'boolean' ? cfg.ipv6Enabled : true,
+      doh1: cfg.doh1 ? { ...cfg.doh1 } : undefined,
+      doh2: cfg.doh2 ? { ...cfg.doh2 } : undefined,
+      ipv6Enabled: typeof cfg.ipv6Enabled === 'boolean' ? cfg.ipv6Enabled : undefined,
+      ipMode: cfg.ipMode || 'static',
+      dnsMode: cfg.dnsMode || 'static',
+      ipv6Mode: cfg.ipv6Mode || 'dhcp',
+      ipv6Ip: cfg.ipv6Ip || '',
+      ipv6Prefix: typeof cfg.ipv6Prefix === 'number' || typeof cfg.ipv6Prefix === 'string' ? cfg.ipv6Prefix : 64,
+      ipv6Gateway: cfg.ipv6Gateway || '',
+      ipv6DnsMode: cfg.ipv6DnsMode || 'dhcp',
+      ipv6Dns1: cfg.ipv6Dns1 || '',
+      ipv6Dns2: cfg.ipv6Dns2 || '',
     };
     adapterDrafts.set(targetAdapter, historyDraft);
 
@@ -401,9 +524,34 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
     ipConfig.gateway = historyDraft.gateway;
     ipConfig.dns1 = historyDraft.dns1;
     ipConfig.dns2 = historyDraft.dns2;
-    ipConfig.doh1 = historyDraft.doh1 ? { ...historyDraft.doh1 } : { mode: 'off', template: '', allowFallback: true };
-    ipConfig.doh2 = historyDraft.doh2 ? { ...historyDraft.doh2 } : { mode: 'off', template: '', allowFallback: true };
-    ipConfig.ipv6Enabled = typeof historyDraft.ipv6Enabled === 'boolean' ? historyDraft.ipv6Enabled : true;
+    ipConfig.doh1 = historyDraft.doh1 ? { ...historyDraft.doh1 } : undefined;
+    ipConfig.doh2 = historyDraft.doh2 ? { ...historyDraft.doh2 } : undefined;
+    ipConfig.ipv6Enabled = historyDraft.ipv6Enabled;
+    ipConfig.ipMode = historyDraft.ipMode;
+    ipConfig.dnsMode = historyDraft.dnsMode;
+    ipConfig.ipv6Mode = historyDraft.ipv6Mode;
+    ipConfig.ipv6Ip = historyDraft.ipv6Ip;
+    ipConfig.ipv6Prefix = historyDraft.ipv6Prefix;
+    ipConfig.ipv6Gateway = historyDraft.ipv6Gateway;
+    ipConfig.ipv6DnsMode = historyDraft.ipv6DnsMode;
+    ipConfig.ipv6Dns1 = historyDraft.ipv6Dns1;
+    ipConfig.ipv6Dns2 = historyDraft.ipv6Dns2;
+
+    // N-11: 若当前快照与目标网卡不匹配，取消在途旧请求、清空旧快照并异步拉取目标网卡实际现场快照
+    if (currentSnapshot.value?.adapterName !== targetAdapter) {
+      currentSnapshot.value = null;
+      const reqId = ++requestCounter;
+      networkClient
+        .getCurrentConfig(targetAdapter)
+        .then(snapshot => {
+          if (reqId === requestCounter && selectedAdapter.value === targetAdapter) {
+            currentSnapshot.value = snapshot;
+          }
+        })
+        .catch(() => {
+          // 静默失败，保持 null，不影响表单内容
+        });
+    }
 
     statusMsg.value = `已载入历史配置到 [${targetAdapter}] 表单`;
     statusType.value = 'info';

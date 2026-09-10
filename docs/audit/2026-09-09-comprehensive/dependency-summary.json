@@ -1,0 +1,104 @@
+{
+  "osvQueried": 409,
+  "windowsPresence": [
+    {
+      "package": "anyhow",
+      "version": "1.0.98",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "bytes",
+      "version": "1.10.1",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "crossbeam-epoch",
+      "version": "0.9.18",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "fxhash",
+      "version": "0.2.1",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "glib",
+      "version": "0.15.12",
+      "inWindowsNormalBuildTree": false
+    },
+    {
+      "package": "instant",
+      "version": "0.1.13",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "proc-macro-error",
+      "version": "1.0.4",
+      "inWindowsNormalBuildTree": false
+    },
+    {
+      "package": "quick-xml",
+      "version": "0.32.0",
+      "inWindowsNormalBuildTree": false
+    },
+    {
+      "package": "rand",
+      "version": "0.7.3",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "rand",
+      "version": "0.8.5",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "serde_with",
+      "version": "3.12.0",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "tar",
+      "version": "0.4.44",
+      "inWindowsNormalBuildTree": true
+    },
+    {
+      "package": "time",
+      "version": "0.3.41",
+      "inWindowsNormalBuildTree": false
+    },
+    {
+      "package": "tracing-subscriber",
+      "version": "0.3.19",
+      "inWindowsNormalBuildTree": false
+    }
+  ],
+  "yarnReportedSummary": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 1,
+      "moderate": 3,
+      "high": 12,
+      "critical": 0
+    },
+    "dependencies": 174,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 174
+  },
+  "uniqueSeverities": [
+    {
+      "Name": "high",
+      "Count": 9
+    },
+    {
+      "Name": "low",
+      "Count": 1
+    },
+    {
+      "Name": "moderate",
+      "Count": 3
+    }
+  ],
+  "uniqueGhsaCount": 13,
+  "osvHitEntries": 14
+}

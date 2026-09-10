@@ -1,0 +1,122 @@
+{
+  "commit": "14de20b42c06d1d00ce719a4e64d667525413b9f",
+  "sourceChanges": null,
+  "checks": {
+    "nativeNetworkWrites": "not executed",
+    "clippy": "passed, all-targets, -D warnings",
+    "releaseMsiRebuild": "not performed",
+    "tauriInfo": "config passed; API installer detection warning",
+    "viteProductionBuild": "passed, Vite 6.4.3, 17 modules",
+    "rustfmt": "failed, domain.rs/platform.rs differences",
+    "rustTests": "10 passed, 0 failed",
+    "gitDiffCheck": "passed",
+    "typecheck": "passed"
+  },
+  "files": [
+    {
+      "path": "打包说明.md",
+      "sha256": "ABD81264460807AD35DF53541830CE049ADD18E449B45244364F91B1C94A2B7E"
+    },
+    {
+      "path": "build-app.bat",
+      "sha256": "B6021C91EE3C17257391FE1C880D4E190044C841796BFE12D3A97009D6A4FE5E"
+    },
+    {
+      "path": "package.json",
+      "sha256": "49F434BD207BC58594C2A3810EAD0760FF1B6597C64292CEA1AE61933B65A98B"
+    },
+    {
+      "path": "README.md",
+      "sha256": "504C822E63A7058B6DB0EA569F9884376D2B44BDFD73E933F258AB04299F0BCF"
+    },
+    {
+      "path": "src-tauri/build.rs",
+      "sha256": "4AE2333B11623039CC115E29B696E7FF5CDFCD5B7D628280DDF48FA733E6418D"
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "sha256": "E26AD52C12EA4E09F9A366A40A98C7672663E1D1B1AE3FD249E174FE91C23A04"
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "sha256": "CC44DB1477A68A14053263D5AFF14681472F7C3E82DB6591058F0D63C4439BF5"
+    },
+    {
+      "path": "src-tauri/src/domain.rs",
+      "sha256": "94A282D57D5C3FAA00777E52EA9E19AA71471EB749812B1B077180954BC512D0"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "sha256": "6FFAFE9FEC4781613745F9934C95A881EF8A792F167F664D49C5CB3FB614F6DE"
+    },
+    {
+      "path": "src-tauri/src/main.rs",
+      "sha256": "D1072665DD4CCF120CEEB6A63CA95B39B60460399C907308F8C28B18454FF143"
+    },
+    {
+      "path": "src-tauri/src/platform.rs",
+      "sha256": "9C249B51CBE3C0A178DACC13C7F741B22C677F73737CE45E3D89E88D9744081D"
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "sha256": "CE24D6E1833B01B0F31C7CA348D6B09399550B97BF0690E487A9D199B49F328F"
+    },
+    {
+      "path": "src/App.vue",
+      "sha256": "847C74BE9965D8C148EB138EE0B324BE5A6F2ED1C31C3C3CF9E0134041DB4FD2"
+    },
+    {
+      "path": "src/assets/vue.svg",
+      "sha256": "5532DB34F1C52841881BAB8AECA6C3E8D092BD21A689A65F4D8F8CF8041EEF9D"
+    },
+    {
+      "path": "src/composables/useConfigHistory.ts",
+      "sha256": "1B18878FED46F790D1A90CF94E481950B2D993A01D9BBC2517140DBF9D46C315"
+    },
+    {
+      "path": "src/composables/useNetworkConfig.ts",
+      "sha256": "0EFA9FF9B4885B9AD8FDB5C37D2FD78E979556DAD672ED6CA5CEC89CE04997B1"
+    },
+    {
+      "path": "src/main.ts",
+      "sha256": "47E56C0FCE47E381544D2EFCB2F4BB23B8A311A4197873DA8F85A19D249E9979"
+    },
+    {
+      "path": "src/services/networkClient.ts",
+      "sha256": "6FA7FCA7D1319896E52310B35212230FE85EEB851D3AFE6E50E0D5FA63DF53AD"
+    },
+    {
+      "path": "src/tauri.d.ts",
+      "sha256": "6E283C24416A3528DD593580B31CBE55E0161F9B62A3195559A1EC8D04C243C9"
+    },
+    {
+      "path": "src/types/network.ts",
+      "sha256": "1EE21D43468365E46A2B579FBC784A5E928B61BE1E4471EA541157154AC05D4D"
+    },
+    {
+      "path": "src/utils/validation.ts",
+      "sha256": "C24C671CB4DB2DFB2A8FEC78D82D7146ECD55D21E1527EB67FC0F4902293DB3F"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "sha256": "23684774ECB20E3C5F5251DBCD357BDF77FAFF12B613D78BACC7AD3ACCD4611A"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "CCA0C20F7D6A421034297F18ADF4636BE3DF38670A970596B7EFEC2FAB1923EB"
+    },
+    {
+      "path": "WindowsNetworkConfigTool_DevDoc_CN.md",
+      "sha256": "8DDA85D2D4E433572AD6AE0F4A56E6EBCB5262953123DA9B4D3255CC939EDBB3"
+    },
+    {
+      "path": "WindowsNetworkConfigTool_DevDoc_EN.md",
+      "sha256": "6D602D7C8FA2B9406BA7D242A1D58664B901DF730934EBA937D593E687E6767E"
+    },
+    {
+      "path": "yarn.lock",
+      "sha256": "A85861F3313B189F40E045BF666D80487F5811D96270751405F28E508A43A210"
+    }
+  ],
+  "generatedAt": "2026-09-09T12:43:21.9062945Z"
+}

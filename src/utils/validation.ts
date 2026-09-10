@@ -78,3 +78,50 @@ export function validateGatewayInSubnet(ip: string, mask: string, gateway: strin
 
   return { valid: true };
 }
+
+/**
+ * 校验 IPv6 地址合法性（支持完整、缩写 :: 及带 scope ID 格式）
+ */
+export function validateIpv6Address(ip: string, allowEmpty = true): boolean {
+  const trimmed = ip.trim();
+  if (trimmed === '') {
+    return allowEmpty;
+  }
+
+  // 移除可选的 zone id (例如 fe80::1%12)
+  const cleanIp = trimmed.includes('%') ? trimmed.split('%')[0] : trimmed;
+
+  // 双冒号 :: 只能出现至多一次
+  const doubleColonIndex = cleanIp.indexOf('::');
+  if (doubleColonIndex !== -1 && cleanIp.indexOf('::', doubleColonIndex + 2) !== -1) {
+    return false;
+  }
+
+  if (doubleColonIndex !== -1) {
+    // 包含 ::
+    const [left, right] = cleanIp.split('::');
+    const leftParts = left ? left.split(':') : [];
+    const rightParts = right ? right.split(':') : [];
+    if (leftParts.length + rightParts.length > 7) {
+      return false;
+    }
+    const allParts = [...leftParts, ...rightParts];
+    return allParts.every(p => /^[0-9a-fA-F]{1,4}$/.test(p));
+  } else {
+    // 不包含 ::，必须恰好 8 段
+    const parts = cleanIp.split(':');
+    if (parts.length !== 8) {
+      return false;
+    }
+    return parts.every(p => /^[0-9a-fA-F]{1,4}$/.test(p));
+  }
+}
+
+/**
+ * 校验 IPv6 前缀长度 (1..=128)
+ */
+export function validateIpv6Prefix(prefix: number | string | undefined | null): boolean {
+  if (prefix === undefined || prefix === null || prefix === '') return false;
+  const num = typeof prefix === 'number' ? prefix : Number(String(prefix).trim());
+  return !isNaN(num) && Number.isInteger(num) && num >= 1 && num <= 128;
+}
