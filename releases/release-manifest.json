@@ -1,28 +1,28 @@
 {
   "version": "0.1.0",
   "architecture": "x64",
-  "generatedAt": "2026-09-10T23:40:30.6028953+08:00",
+  "generatedAt": "2026-09-11T01:02:23.8920845+08:00",
   "signed": false,
   "artifacts": [
     {
       "file": "Windows网络配置工具.exe",
-      "bytes": 2094592,
-      "sha256": "0abf9f9846e1e5e776acf95da37f05e85fc1281651014807d38345fee26ecb12"
+      "bytes": 2108416,
+      "sha256": "1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795"
     },
     {
       "file": "Windows_Network_Config_Tool_v0.1.0.exe",
-      "bytes": 2094592,
-      "sha256": "0abf9f9846e1e5e776acf95da37f05e85fc1281651014807d38345fee26ecb12"
+      "bytes": 2108416,
+      "sha256": "1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64_zh-CN.msi",
-      "bytes": 1466368,
-      "sha256": "8c7016b4f0dafcbafe3995e042e3ea64f4d04061254b1e2bd6c1f06345042edc"
+      "bytes": 1470464,
+      "sha256": "377faa39dbf1b6a23fccf8932746c752a6487096e8c589fee197b70b0e5f7ba7"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64-setup.exe",
-      "bytes": 952452,
-      "sha256": "a32157d8ced46f39d27457d7ffbfc169aca5f841f3447579bb24e8f5e87ed875"
+      "bytes": 955574,
+      "sha256": "5274415612af90a2ec32329a9147e5f2f7dae55253b59c9fca132b7c52f01009"
     }
   ],
   "sourceFiles": [
@@ -32,7 +32,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "394c49d156c85bc091873ea31aa69a38a65987b8b99255a9c5546fb73468e2a7"
+      "sha256": "fccef829e829dcaab46048c04ac21e2de24cfd671fe7228280546f375e1213b7"
     },
     {
       "path": "public/tauri.svg",
@@ -120,7 +120,7 @@
     },
     {
       "path": "src-tauri/src/domain.rs",
-      "sha256": "5967a6ec8be653387bfcc4e0f19ec1812c02b6fdbf5f52ffc6f304b590730a6c"
+      "sha256": "d85e5b48022f982d7993b49f2eeb65f01dcfe41b3eecbd79da945c919a005a02"
     },
     {
       "path": "src-tauri/src/lib.rs",
@@ -132,7 +132,7 @@
     },
     {
       "path": "src-tauri/src/platform.rs",
-      "sha256": "236618b635e534b7a6fd04095262f696b14e3c5516898b59f1b77d8139fb4b3c"
+      "sha256": "f2a69de11e298a73a4beea3a45ed5be930299426d0924b2d68142104e64a3b3e"
     },
     {
       "path": "src-tauri/tauri.conf.json",
@@ -140,7 +140,7 @@
     },
     {
       "path": "src/App.vue",
-      "sha256": "b43afd73aaffa69e94ae3d7a59f091513c678945defc2a517122d48ab6c30b8d"
+      "sha256": "7f38b7a3f6ac2599d9289db17c7eb11af70dccf401669671fb43dea94383d894"
     },
     {
       "path": "src/assets/vue.svg",
@@ -148,11 +148,11 @@
     },
     {
       "path": "src/composables/useConfigHistory.ts",
-      "sha256": "63d182fc6669f6309409addcf592709e7641918cb7830851e61389eb7d1bf43a"
+      "sha256": "41292ffae42cd6fca77367277559d827391fe3d984282e2994c918aa49bb6515"
     },
     {
       "path": "src/composables/useNetworkConfig.ts",
-      "sha256": "91ec9ac62e9844c730cfd3d1c3d1a75be2e6e8c5aff0ea7d6f08efc40e287d06"
+      "sha256": "ef5cdbeb4bdc5bb10cc44c7c66d812d0f237a22a512123913b07cde8ae906981"
     },
     {
       "path": "src/main.ts",

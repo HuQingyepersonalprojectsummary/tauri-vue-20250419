@@ -1,6 +1,6 @@
 # Windows 网络配置工具开发文档
 
-更新日期：2026-09-10。适用于当前 0.1.0 源码和 Windows x64 构建。英文版见 [Developer guide](./WindowsNetworkConfigTool_DevDoc_EN.md)。
+更新日期：2026-09-11。适用于当前 0.1.0 源码和 Windows x64 构建。英文版见 [Developer guide](./WindowsNetworkConfigTool_DevDoc_EN.md)。
 
 ## 1. 环境与依赖
 
@@ -133,11 +133,13 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
 npm run test:regression
+npm run test:functional
 npm run release
 ```
 
 - **单元测试 (17 项)**：涵盖 IPv4/IPv6 格式校验、子网连续掩码换算、网关同网段断言、DNS/DoH 组合校验、快照读回校验、跨进程互斥锁超时、子进程静默执行、Netsh 参数格式化、进程错误输出回退以及管理员特权检查。
 - **回归测试 (12 项)**：测试当前源码，临时 Rust 工程仅替换系统 IO，Vue 使用实际 composable。测试输出进入被忽略的 tests/regression/ipv6/output；任何探针失败会让命令非零退出。修改生产函数边界时必须同步提取探针并验证它仍运行生产逻辑。
+- **功能逻辑测试 (18 项)**：涵盖 12 项前端功能用例与 6 项原生事务用例，验证 IPv4/DNS 保持意图隔离、DoH 独立 restore 回滚恢复、关闭 IPv6 容错校验以及权限等待锁定机制。
 
 构建命令生成 EXE、MSI 和 NSIS，并将本轮文件导出到 releases。scripts/export-release.ps1 在复制前检查完整产物集合及构建时间，生成源码指纹和 SHA-256。详见 [打包说明](./打包说明.md)。
 

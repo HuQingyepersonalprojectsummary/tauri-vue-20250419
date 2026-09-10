@@ -1,0 +1,112 @@
+[
+  {
+    "case": "ipv6_toggle_resubmits_unchanged_static_ipv4_dns",
+    "payload": {
+      "adapter": "A",
+      "ip": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "",
+      "dns1": "192.0.2.53",
+      "dns2": "",
+      "doh1": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "doh2": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "ipv6Enabled": false,
+      "ipMode": "static",
+      "dnsMode": "static",
+      "ipv6Mode": "dhcp",
+      "ipv6Ip": "",
+      "ipv6Prefix": 64,
+      "ipv6Gateway": "",
+      "ipv6DnsMode": "dhcp",
+      "ipv6Dns1": "",
+      "ipv6Dns2": ""
+    }
+  },
+  {
+    "case": "disabled_ipv6_submits_hidden_invalid_static",
+    "payload": {
+      "adapter": "A",
+      "ip": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "",
+      "dns1": "",
+      "dns2": "",
+      "doh1": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "doh2": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "ipv6Enabled": false,
+      "ipMode": "dhcp",
+      "dnsMode": "dhcp",
+      "ipv6Mode": "static",
+      "ipv6Ip": "",
+      "ipv6Prefix": 64,
+      "ipv6Gateway": "",
+      "ipv6DnsMode": "dhcp",
+      "ipv6Dns1": "",
+      "ipv6Dns2": ""
+    }
+  },
+  {
+    "case": "same_adapter_history_inflight_api_only",
+    "ip": "192.0.2.10",
+    "ipv6Enabled": true
+  },
+  {
+    "case": "admin_await_changes_apply_target",
+    "unlockedDuringAdmin": true,
+    "clickedAdapter": "A",
+    "payload": {
+      "adapter": "B",
+      "ip": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "",
+      "dns1": "",
+      "dns2": "",
+      "doh1": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "doh2": {
+        "mode": "off",
+        "template": "",
+        "allowFallback": true
+      },
+      "ipv6Enabled": true,
+      "ipMode": "dhcp",
+      "dnsMode": "dhcp",
+      "ipv6Mode": "dhcp",
+      "ipv6Ip": "",
+      "ipv6Prefix": 64,
+      "ipv6Gateway": "",
+      "ipv6DnsMode": "dhcp",
+      "ipv6Dns1": "",
+      "ipv6Dns2": ""
+    }
+  },
+  {
+    "case": "no_adapters_retains_old_snapshot",
+    "selected": "",
+    "snapshot": "A",
+    "form": "A"
+  },
+  {
+    "case": "superseded_read_loading_api_only",
+    "isLoading": true
+  }
+]

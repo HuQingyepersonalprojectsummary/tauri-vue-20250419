@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-10",
+  "commit": "7f2497d32a6c9d1a9995e59e7ba0ce9b54ddf1f6",
+  "sourceFiles": [
+    {
+      "path": "src/App.vue",
+      "sha256": "b43afd73aaffa69e94ae3d7a59f091513c678945defc2a517122d48ab6c30b8d"
+    },
+    {
+      "path": "src/composables/useNetworkConfig.ts",
+      "sha256": "91ec9ac62e9844c730cfd3d1c3d1a75be2e6e8c5aff0ea7d6f08efc40e287d06"
+    },
+    {
+      "path": "src/composables/useConfigHistory.ts",
+      "sha256": "63d182fc6669f6309409addcf592709e7641918cb7830851e61389eb7d1bf43a"
+    },
+    {
+      "path": "src/types/network.ts",
+      "sha256": "64999fd004e3c4aa963f901c656482f9cc8d40eda4b032a156ef733778153cb6"
+    },
+    {
+      "path": "src/services/networkClient.ts",
+      "sha256": "874ef91b68410f48488fe006d6f7459b818eaeb92a3a00eae470cf70ff1e88d5"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "sha256": "af7adebebc85291740dc82933826f3db7d241662fe13047cfea56acdcbe45023"
+    },
+    {
+      "path": "src-tauri/src/domain.rs",
+      "sha256": "5967a6ec8be653387bfcc4e0f19ec1812c02b6fdbf5f52ffc6f304b590730a6c"
+    },
+    {
+      "path": "src-tauri/src/platform.rs",
+      "sha256": "236618b635e534b7a6fd04095262f696b14e3c5516898b59f1b77d8139fb4b3c"
+    }
+  ],
+  "findings": 8,
+  "productionCodeModified": false,
+  "liveNetworkModified": false
+}

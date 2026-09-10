@@ -88,6 +88,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 
 # 有状态事务逆向补偿与故障注入回归测试（12 项场景）
 npm run test:regression
+
+# 功能逻辑与意图保持回归测试（18 项用例：12 前端 + 6 原生）
+npm run test:functional
 ```
 
 ### 4. 一键打包发布
@@ -108,7 +111,7 @@ npm run release
 | 🌐 [English Developer Guide (DevDoc_EN.md)](./WindowsNetworkConfigTool_DevDoc_EN.md) | 英文版系统设计架构、IPC 接口规范与开发维护指南。 |
 | 📦 [打包发布说明 (打包说明.md)](./打包说明.md) | 环境配置、安装包构建机制、哈希指纹校验与验收测试规范。 |
 | 🛡️ [已知限制与技术边界 (docs/known-limitations.md)](./docs/known-limitations.md) | 说明 UAC 提权机制、非原子事务恢复边界、DoH 系统级影响与系统约束。 |
-| 🧪 [验证记录与测试报告 (docs/verification.md)](./docs/verification.md) | 涵盖 17 项单元测试、12 项有状态回归测试、审计整改闭环与推荐验收清单。 |
+| 🧪 [验证记录与测试报告 (docs/verification.md)](./docs/verification.md) | 涵盖 17 项单元测试、12 项有状态回归、18 项功能回归、审计整改闭环与推荐验收清单。 |
 | 🔬 [回归测试说明 (tests/regression/ipv6/README.md)](./tests/regression/ipv6/README.md) | 隔离探针设计、受控 IO 故障模拟与回归测试执行机制。 |
 | 📄 [开源许可证 (LICENSE)](./LICENSE) | MIT 开源许可证文本。 |
 

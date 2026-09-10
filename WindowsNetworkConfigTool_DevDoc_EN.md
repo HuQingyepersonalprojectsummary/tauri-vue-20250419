@@ -1,6 +1,6 @@
 # Windows Network Configuration Tool — Developer Guide
 
-Updated 2026-09-10 for the current 0.1.0 source and Windows x64 build. The [Chinese guide](./WindowsNetworkConfigTool_DevDoc_CN.md) covers the same implementation.
+Updated 2026-09-11 for the current 0.1.0 source and Windows x64 build. The [Chinese guide](./WindowsNetworkConfigTool_DevDoc_CN.md) covers the same implementation.
 
 ## 1. Environment and dependencies
 
@@ -118,11 +118,13 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
 npm run test:regression
+npm run test:functional
 npm run release
 ```
 
 - **Unit tests (17 passed)**: Covers IPv4/IPv6 validation, continuous subnet mask calculation, subnet gateway assertions, DNS/DoH combinations, snapshot restoration verification, cross-process named mutex timeout, silent child process execution, netsh argument formatting, process error fallback, and administrator privilege detection.
 - **Regression tests (12 passed)**: Regression probes execute current production transaction logic, actual Vue composables and extracted PowerShell scripts with controlled IO. Results go to the ignored tests/regression/ipv6/output directory; any failed probe/assertion exits nonzero. Keep extraction boundaries synchronized when production functions move.
+- **Functional logic tests (18 passed)**: Covers 12 frontend functional test cases and 6 native transaction test cases, verifying IPv4/DNS keep intent isolation, independent DoH restore rollback, IPv6 disable tolerance validation, and privilege check UI locks.
 
 The release script builds frontend resources, the executable, MSI and NSIS, verifies artifact freshness, then exports artifacts and hashes. See the [packaging guide](./打包说明.md). The current release is unsigned, x64, with a WebView2 download-bootstrapper installer policy. Native UI, real network changes, UAC and installation/uninstallation still require acceptance testing.
 

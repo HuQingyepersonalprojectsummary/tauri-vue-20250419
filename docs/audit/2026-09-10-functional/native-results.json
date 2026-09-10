@@ -1,0 +1,558 @@
+[
+  {
+    "calls": [],
+    "case": "disable_with_hidden_static",
+    "config": {
+      "adapter": "fixture",
+      "dns1": "",
+      "dns2": "",
+      "dnsMode": "keep",
+      "doh1": null,
+      "doh2": null,
+      "gateway": "",
+      "ip": "",
+      "ipMode": "keep",
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsMode": null,
+      "ipv6Enabled": false,
+      "ipv6Gateway": "",
+      "ipv6Ip": "",
+      "ipv6Mode": "static",
+      "ipv6Prefix": null,
+      "mask": ""
+    },
+    "result": {
+      "Err": "IPv6 地址不能为空"
+    }
+  },
+  {
+    "calls": [],
+    "case": "disable_with_hidden_static_dns",
+    "config": {
+      "adapter": "fixture",
+      "dns1": "",
+      "dns2": "",
+      "dnsMode": "keep",
+      "doh1": null,
+      "doh2": null,
+      "gateway": "",
+      "ip": "",
+      "ipMode": "keep",
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsMode": "static",
+      "ipv6Enabled": false,
+      "ipv6Gateway": "",
+      "ipv6Ip": "",
+      "ipv6Mode": null,
+      "ipv6Prefix": null,
+      "mask": ""
+    },
+    "result": {
+      "Err": "手动 IPv6 DNS 必须填写首选 DNS (DNS1)，如不修改请选择保持现状"
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "mocked-powershell"
+        ],
+        "payload": {
+          "adapter": "fixture",
+          "dohList": [
+            {
+              "action": "set",
+              "allowFallback": true,
+              "mode": "off",
+              "serverIp": "192.0.2.53",
+              "template": ""
+            }
+          ],
+          "ipv6Enabled": false
+        }
+      }
+    ],
+    "case": "keep_dns_turns_doh_off",
+    "config": {
+      "adapter": "fixture",
+      "dns1": "",
+      "dns2": "",
+      "dnsMode": "keep",
+      "doh1": null,
+      "doh2": null,
+      "gateway": "",
+      "ip": "",
+      "ipMode": "keep",
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsMode": null,
+      "ipv6Enabled": false,
+      "ipv6Gateway": "",
+      "ipv6Ip": "",
+      "ipv6Mode": null,
+      "ipv6Prefix": null,
+      "mask": ""
+    },
+    "result": {
+      "Ok": {
+        "message": "网络配置已成功应用并通过读回校验",
+        "rollbackMessage": null,
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [],
+          "dhcpEnabled": true,
+          "dns1": "192.0.2.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "192.0.2.53"
+          ],
+          "doh1": {
+            "allowFallback": true,
+            "mode": "off",
+            "template": ""
+          },
+          "doh2": null,
+          "dohSettings": {
+            "192.0.2.53": {
+              "allowFallback": true,
+              "autoUpgrade": false,
+              "template": "https://global.example/dns-query"
+            }
+          },
+          "dohSupported": true,
+          "gateway": "",
+          "gateways": [],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "",
+          "ipv6Addresses": [],
+          "ipv6DhcpEnabled": true,
+          "ipv6Dns1": "",
+          "ipv6Dns2": "",
+          "ipv6DnsDhcpEnabled": true,
+          "ipv6DnsMode": null,
+          "ipv6DnsServers": [],
+          "ipv6Enabled": false,
+          "ipv6Gateway": "",
+          "ipv6Gateways": [],
+          "ipv6Ip": "",
+          "ipv6Mode": null,
+          "ipv6Prefix": null,
+          "mask": "",
+          "status": "Up"
+        },
+        "success": true
+      }
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "mocked-powershell"
+        ],
+        "payload": {
+          "adapter": "fixture",
+          "dohList": [
+            {
+              "action": "set",
+              "allowFallback": true,
+              "mode": "off",
+              "serverIp": "192.0.2.53",
+              "template": ""
+            }
+          ],
+          "ipv6Enabled": false
+        }
+      }
+    ],
+    "case": "static_dns_blank_keeps_previous",
+    "config": {
+      "adapter": "fixture",
+      "dns1": "",
+      "dns2": "",
+      "dnsMode": "static",
+      "doh1": null,
+      "doh2": null,
+      "gateway": "",
+      "ip": "",
+      "ipMode": "keep",
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsMode": null,
+      "ipv6Enabled": false,
+      "ipv6Gateway": "",
+      "ipv6Ip": "",
+      "ipv6Mode": null,
+      "ipv6Prefix": null,
+      "mask": ""
+    },
+    "result": {
+      "Ok": {
+        "message": "网络配置已成功应用并通过读回校验",
+        "rollbackMessage": null,
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [],
+          "dhcpEnabled": true,
+          "dns1": "192.0.2.53",
+          "dns2": "",
+          "dnsDhcpEnabled": true,
+          "dnsServers": [
+            "192.0.2.53"
+          ],
+          "doh1": {
+            "allowFallback": true,
+            "mode": "off",
+            "template": ""
+          },
+          "doh2": null,
+          "dohSettings": {
+            "192.0.2.53": {
+              "allowFallback": true,
+              "autoUpgrade": false,
+              "template": "https://global.example/dns-query"
+            }
+          },
+          "dohSupported": true,
+          "gateway": "",
+          "gateways": [],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "",
+          "ipv6Addresses": [],
+          "ipv6DhcpEnabled": true,
+          "ipv6Dns1": "",
+          "ipv6Dns2": "",
+          "ipv6DnsDhcpEnabled": true,
+          "ipv6DnsMode": null,
+          "ipv6DnsServers": [],
+          "ipv6Enabled": false,
+          "ipv6Gateway": "",
+          "ipv6Gateways": [],
+          "ipv6Ip": "",
+          "ipv6Mode": null,
+          "ipv6Prefix": null,
+          "mask": "",
+          "status": "Up"
+        },
+        "success": true
+      }
+    }
+  },
+  {
+    "before": {
+      "adapterName": "fixture",
+      "addresses": [],
+      "dhcpEnabled": true,
+      "dns1": "192.0.2.53",
+      "dns2": "",
+      "dnsDhcpEnabled": false,
+      "dnsServers": [
+        "192.0.2.53"
+      ],
+      "doh1": {
+        "allowFallback": false,
+        "mode": "auto",
+        "template": "https://adapter.example/dns-query"
+      },
+      "doh2": null,
+      "dohSettings": {
+        "192.0.2.53": {
+          "allowFallback": true,
+          "autoUpgrade": true,
+          "template": "https://global.example/dns-query"
+        }
+      },
+      "dohSupported": true,
+      "gateway": "",
+      "gateways": [],
+      "interfaceGuid": "fixture-guid",
+      "interfaceIndex": 7,
+      "ip": "",
+      "ipv6Addresses": [],
+      "ipv6DhcpEnabled": true,
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsDhcpEnabled": true,
+      "ipv6DnsMode": null,
+      "ipv6DnsServers": [
+        "2001:db8::53"
+      ],
+      "ipv6Enabled": false,
+      "ipv6Gateway": "",
+      "ipv6Gateways": [],
+      "ipv6Ip": "",
+      "ipv6Mode": null,
+      "ipv6Prefix": null,
+      "mask": "",
+      "status": "Up"
+    },
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=fixture",
+          "source=dhcp"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=fixture",
+          "static",
+          "192.0.2.53"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "mocked-powershell"
+        ],
+        "payload": {
+          "adapter": "fixture",
+          "dohList": [
+            {
+              "action": "set",
+              "allowFallback": true,
+              "mode": "manual",
+              "serverIp": "192.0.2.53",
+              "template": "https://global.example/dns-query"
+            }
+          ],
+          "ipv6Enabled": false
+        }
+      }
+    ],
+    "case": "rollback_uses_global_not_adapter_doh",
+    "result": {
+      "Ok": null
+    }
+  },
+  {
+    "calls": [
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=fixture",
+          "static",
+          "192.0.2.53"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "mocked-powershell"
+        ],
+        "payload": {
+          "adapter": "fixture",
+          "dohList": [
+            {
+              "action": "set",
+              "allowFallback": false,
+              "mode": "auto",
+              "serverIp": "192.0.2.53",
+              "template": "https://adapter.example/dns-query"
+            },
+            {
+              "action": "set",
+              "allowFallback": true,
+              "mode": "off",
+              "serverIp": "2001:db8::53",
+              "template": ""
+            }
+          ],
+          "ipv6Enabled": true
+        }
+      },
+      {
+        "args": [
+          "interface",
+          "ipv6",
+          "set",
+          "dnsservers",
+          "name=fixture",
+          "source=dhcp"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "address",
+          "name=fixture",
+          "source=dhcp"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "interface",
+          "ip",
+          "set",
+          "dns",
+          "name=fixture",
+          "static",
+          "192.0.2.53"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "mocked-powershell"
+        ],
+        "payload": {
+          "adapter": "fixture",
+          "dohList": [
+            {
+              "action": "set",
+              "allowFallback": true,
+              "mode": "manual",
+              "serverIp": "192.0.2.53",
+              "template": "https://global.example/dns-query"
+            }
+          ],
+          "ipv6Enabled": true
+        }
+      },
+      {
+        "args": [
+          "interface",
+          "ipv6",
+          "delete",
+          "route",
+          "::/0",
+          "interface=fixture"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "interface",
+          "ipv6",
+          "set",
+          "interface",
+          "interface=fixture",
+          "routerdiscovery=enabled",
+          "managedaddress=enabled"
+        ],
+        "payload": null
+      },
+      {
+        "args": [
+          "interface",
+          "ipv6",
+          "set",
+          "dnsservers",
+          "name=fixture",
+          "static",
+          "2001:db8::53",
+          "validate=no"
+        ],
+        "payload": null
+      }
+    ],
+    "case": "failed_ipv6_dns_does_not_restore_doh",
+    "config": {
+      "adapter": "fixture",
+      "dns1": "192.0.2.53",
+      "dns2": "",
+      "dnsMode": "static",
+      "doh1": {
+        "allowFallback": false,
+        "mode": "auto",
+        "template": "https://adapter.example/dns-query"
+      },
+      "doh2": null,
+      "gateway": "",
+      "ip": "",
+      "ipMode": "keep",
+      "ipv6Dns1": "",
+      "ipv6Dns2": "",
+      "ipv6DnsMode": "dhcp",
+      "ipv6Enabled": true,
+      "ipv6Gateway": "",
+      "ipv6Ip": "",
+      "ipv6Mode": null,
+      "ipv6Prefix": null,
+      "mask": ""
+    },
+    "result": {
+      "Ok": {
+        "message": "执行切换 IPv6 DNS 为自动获取异常: fixture IPv6 DNS switch failed after DoH cleanup",
+        "rollbackMessage": "执行切换 IPv6 DNS 为自动获取异常: fixture IPv6 DNS switch failed after DoH cleanup，已执行回滚命令但现场核验不一致 (全局 DoH 服务器 (2001:db8::53) 自动升级策略未恢复 (期望: true, 实际: false))，原配置可能未完整恢复，请手动核对！",
+        "rolledBack": false,
+        "snapshot": {
+          "adapterName": "fixture",
+          "addresses": [],
+          "dhcpEnabled": true,
+          "dns1": "192.0.2.53",
+          "dns2": "",
+          "dnsDhcpEnabled": false,
+          "dnsServers": [
+            "192.0.2.53"
+          ],
+          "doh1": {
+            "allowFallback": false,
+            "mode": "auto",
+            "template": "https://adapter.example/dns-query"
+          },
+          "doh2": null,
+          "dohSettings": {
+            "192.0.2.53": {
+              "allowFallback": true,
+              "autoUpgrade": true,
+              "template": "https://global.example/dns-query"
+            },
+            "2001:db8::53": {
+              "allowFallback": false,
+              "autoUpgrade": false,
+              "template": "https://v6.example/dns-query"
+            }
+          },
+          "dohSupported": true,
+          "gateway": "",
+          "gateways": [],
+          "interfaceGuid": "fixture-guid",
+          "interfaceIndex": 7,
+          "ip": "",
+          "ipv6Addresses": [],
+          "ipv6DhcpEnabled": true,
+          "ipv6Dns1": "",
+          "ipv6Dns2": "",
+          "ipv6DnsDhcpEnabled": false,
+          "ipv6DnsMode": null,
+          "ipv6DnsServers": [
+            "2001:db8::53"
+          ],
+          "ipv6Enabled": true,
+          "ipv6Gateway": "",
+          "ipv6Gateways": [],
+          "ipv6Ip": "",
+          "ipv6Mode": null,
+          "ipv6Prefix": null,
+          "mask": "",
+          "status": "Up"
+        },
+        "success": false
+      }
+    }
+  }
+]

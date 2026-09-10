@@ -1,4 +1,4 @@
-import { ref, reactive, watch } from 'vue';
+import { computed, ref, reactive, watch } from 'vue';
 import type { AdapterInfo, AdapterSnapshot, Ipv4Config, OperationResult } from '../types/network';
 import { networkClient } from '../services/networkClient';
 import {
@@ -27,7 +27,10 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
   /** 当前选中的目标网络适配器名称 */
   const selectedAdapter = ref('');
   /** 全局异步加载状态指示器 (网络扫描或配置应用中) */
-  const isLoading = ref(false);
+  const isListing = ref(false);
+  const isReading = ref(false);
+  const isApplying = ref(false);
+  const isLoading = computed(() => isListing.value || isReading.value || isApplying.value);
   /** 底部操作状态反馈文本 */
   const statusMsg = ref('');
   /** 状态消息类型，驱动 UI 呈现不同强调色 (info | success | warning | error) */
@@ -55,14 +58,14 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       template: '',
       allowFallback: true,
     },
-    ipv6Enabled: true,
-    ipMode: 'static',
-    dnsMode: 'static',
-    ipv6Mode: 'dhcp',
+    ipv6Enabled: undefined,
+    ipMode: 'keep',
+    dnsMode: 'keep',
+    ipv6Mode: undefined,
     ipv6Ip: '',
     ipv6Prefix: 64,
     ipv6Gateway: '',
-    ipv6DnsMode: 'dhcp',
+    ipv6DnsMode: undefined,
     ipv6Dns1: '',
     ipv6Dns2: '',
   });
@@ -97,14 +100,14 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       template: '',
       allowFallback: true,
     };
-    ipConfig.ipv6Enabled = true;
-    ipConfig.ipMode = 'static';
-    ipConfig.dnsMode = 'static';
-    ipConfig.ipv6Mode = 'dhcp';
+    ipConfig.ipv6Enabled = undefined;
+    ipConfig.ipMode = 'keep';
+    ipConfig.dnsMode = 'keep';
+    ipConfig.ipv6Mode = undefined;
     ipConfig.ipv6Ip = '';
     ipConfig.ipv6Prefix = 64;
     ipConfig.ipv6Gateway = '';
-    ipConfig.ipv6DnsMode = 'dhcp';
+    ipConfig.ipv6DnsMode = undefined;
     ipConfig.ipv6Dns1 = '';
     ipConfig.ipv6Dns2 = '';
     currentSnapshot.value = null;
@@ -136,7 +139,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
    * 成功获取列表后，若当前未选中任何网卡或原网卡已脱机，自动默认选中首个有效适配器。
    */
   async function loadAdapters(): Promise<void> {
-    isLoading.value = true;
+    if (isLoading.value) return;
+    isListing.value = true;
     statusMsg.value = '正在获取网络适配器列表...';
     statusType.value = 'info';
 
@@ -151,7 +155,10 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
           selectedAdapter.value = list[0].name;
         }
       } else {
+        ++requestCounter;
+        isReading.value = false;
         selectedAdapter.value = '';
+        clearFormFields('');
         statusMsg.value = '未检测到可用的网络适配器';
         statusType.value = 'warning';
       }
@@ -159,7 +166,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       statusMsg.value = '获取适配器列表失败: ' + (err instanceof Error ? err.message : String(err));
       statusType.value = 'error';
     } finally {
-      isLoading.value = false;
+      isListing.value = false;
     }
   }
 
@@ -172,10 +179,10 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
    * @param targetAdapter 目标网络适配器别名
    */
   async function fetchCurrentConfig(targetAdapter: string): Promise<void> {
-    if (!targetAdapter) return;
+    if (!targetAdapter || isApplying.value) return;
     const reqId = ++requestCounter;
 
-    isLoading.value = true;
+    isReading.value = true;
     statusMsg.value = `正在获取 [${targetAdapter}] 的网络配置...`;
     statusType.value = 'info';
 
@@ -201,13 +208,13 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         ? { ...snapshot.doh2 }
         : { mode: 'off', template: '', allowFallback: true };
       ipConfig.ipv6Enabled = typeof snapshot.ipv6Enabled === 'boolean' ? snapshot.ipv6Enabled : true;
-      ipConfig.ipMode = snapshot.dhcpEnabled ? 'dhcp' : 'static';
-      ipConfig.dnsMode = snapshot.dnsDhcpEnabled ? 'dhcp' : 'static';
-      ipConfig.ipv6Mode = snapshot.ipv6DhcpEnabled !== false ? 'dhcp' : 'static';
+      ipConfig.ipMode = 'keep';
+      ipConfig.dnsMode = 'keep';
+      ipConfig.ipv6Mode = undefined;
       ipConfig.ipv6Ip = snapshot.ipv6Ip || '';
       ipConfig.ipv6Prefix = typeof snapshot.ipv6Prefix === 'number' ? snapshot.ipv6Prefix : 64;
       ipConfig.ipv6Gateway = snapshot.ipv6Gateway || '';
-      ipConfig.ipv6DnsMode = snapshot.ipv6DnsDhcpEnabled !== false ? 'dhcp' : 'static';
+      ipConfig.ipv6DnsMode = undefined;
       ipConfig.ipv6Dns1 = snapshot.ipv6Dns1 || '';
       ipConfig.ipv6Dns2 = snapshot.ipv6Dns2 || '';
 
@@ -226,7 +233,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       statusType.value = 'error';
     } finally {
       if (reqId === requestCounter) {
-        isLoading.value = false;
+        isReading.value = false;
       }
     }
   }
@@ -237,6 +244,10 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       isApplyingHistory = false;
       return;
     }
+
+    // 旧读请求不能再覆盖新网卡或保留其加载状态。
+    ++requestCounter;
+    isReading.value = false;
 
     if (oldAdapter && ipConfig.adapter === oldAdapter) {
       // 切换前保存旧网卡的当前草稿
@@ -288,6 +299,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         clearFormFields(newAdapter);
         fetchCurrentConfig(newAdapter);
       }
+    } else {
+      clearFormFields('');
     }
   });
 
@@ -302,6 +315,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
    * 5. 依据后端返回结果展示成功反馈或自动安全回滚诊断提示。
    */
   async function applyConfig(): Promise<void> {
+    if (isLoading.value) return;
     if (!selectedAdapter.value) {
       statusMsg.value = '请先选择一个网络适配器';
       statusType.value = 'warning';
@@ -355,6 +369,11 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
 
     // DNS 组合与 DoH 校验 (仅在静态模式下校验，N-07)
     if (ipConfig.dnsMode === 'static') {
+      if (!ipConfig.dns1.trim()) {
+        statusMsg.value = '手动 IPv4 DNS 必须填写首选 DNS，如不修改请选择保持现状';
+        statusType.value = 'warning';
+        return;
+      }
       // DNS 组合校验：不允许单设 DNS2 而不设 DNS1 (R-02)
       if (!ipConfig.dns1.trim() && ipConfig.dns2.trim()) {
         statusMsg.value = '若配置辅助 DNS，必须先配置首选 DNS (DNS1)';
@@ -459,22 +478,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       }
     }
 
-    // 前置管理员权限检查：若已明确非管理员权限，立即阻断并给予告警提示
-    if (typeof networkClient.checkAdminPrivilege === 'function') {
-      try {
-        const elevated = await networkClient.checkAdminPrivilege();
-        isAdmin.value = elevated;
-        if (!elevated) {
-          statusMsg.value = '权限不足：修改网络配置与 DNS/DoH 需要管理员权限。请退出程序，右键点击应用图标并选择【以管理员身份运行】后再试。';
-          statusType.value = 'error';
-          return;
-        }
-      } catch {
-        // 若检查抛错，交由后端处理
-      }
-    }
-
-    isLoading.value = true;
+    // 第一次 await 前锁定 UI 和提交载荷，避免目标漂移及重复排队。
+    isApplying.value = true;
     statusMsg.value = '正在应用网络配置并进行读回校验...';
     statusType.value = 'info';
 
@@ -499,25 +504,30 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
         ipv6Enabled: ipConfig.ipv6Enabled,
         ipMode: ipConfig.ipMode,
         dnsMode: ipConfig.dnsMode,
-        ipv6Mode: ipConfig.ipv6Mode,
-        ipv6Ip: ipConfig.ipv6Ip?.trim(),
-        ipv6Prefix: ipConfig.ipv6Prefix !== undefined && ipConfig.ipv6Prefix !== '' ? Number(ipConfig.ipv6Prefix) : undefined,
-        ipv6Gateway: ipConfig.ipv6Gateway?.trim(),
-        ipv6DnsMode: ipConfig.ipv6DnsMode,
-        ipv6Dns1: ipConfig.ipv6Dns1?.trim(),
-        ipv6Dns2: ipConfig.ipv6Dns2?.trim(),
+        ipv6Mode: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6Mode,
+        ipv6Ip: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6Ip?.trim(),
+        ipv6Prefix: ipConfig.ipv6Enabled !== false && ipConfig.ipv6Mode === 'static' && ipConfig.ipv6Prefix !== undefined && ipConfig.ipv6Prefix !== '' ? Number(ipConfig.ipv6Prefix) : undefined,
+        ipv6Gateway: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6Gateway?.trim(),
+        ipv6DnsMode: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6DnsMode,
+        ipv6Dns1: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6Dns1?.trim(),
+        ipv6Dns2: ipConfig.ipv6Enabled === false ? undefined : ipConfig.ipv6Dns2?.trim(),
       };
 
+      if (!await checkAdmin()) {
+        statusMsg.value = '权限不足：修改网络配置与 DNS/DoH 需要管理员权限。请退出程序，右键点击应用图标并选择【以管理员身份运行】后再试。';
+        statusType.value = 'error';
+        return;
+      }
       const result: OperationResult = await networkClient.applyAdapterIpv4Config(payload);
+      if (result.success && onConfigApplied) onConfigApplied(payload);
+      // 防御直接调用方在等待期间改变选择；结果只属于提交时的网卡。
+      if (selectedAdapter.value !== payload.adapter) return;
 
       if (result.success) {
         statusMsg.value = result.message;
         statusType.value = 'success';
         if (result.snapshot) {
           currentSnapshot.value = result.snapshot;
-        }
-        if (onConfigApplied) {
-          onConfigApplied(payload);
         }
       } else {
         // N-08: 失败或状态未知时，无论是否成功回滚，必须保留并更新实际现场快照与详细诊断；若现场快照读回失败则显式清空旧快照
@@ -539,7 +549,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       statusMsg.value = '执行网络修改时发生未捕获异常: ' + (err instanceof Error ? err.message : String(err));
       statusType.value = 'error';
     } finally {
-      isLoading.value = false;
+      isApplying.value = false;
     }
   }
 
@@ -549,6 +559,7 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
    * @param cfg 包含历史配置字段的对象
    */
   function fillFromHistory(cfg: Partial<Ipv4Config> & { ip: string; mask: string }): void {
+    if (isApplying.value) return;
     // 历史目标网卡身份核验：若指定了网卡但该网卡在系统中不存在，严禁静默套用到当前选中的网卡上 (R-04, F-06)
     if (cfg.adapter && !adapters.value.some(a => a.name === cfg.adapter)) {
       statusMsg.value = `历史记录绑定的网络适配器 [${cfg.adapter}] 在当前系统中已不存在，已拒绝自动套用，请先确认目标网卡`;
@@ -562,6 +573,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       statusType.value = 'warning';
       return;
     }
+    ++requestCounter;
+    isReading.value = false;
 
     // 保存当前活动适配器的草稿
     if (selectedAdapter.value && ipConfig.adapter === selectedAdapter.value) {
@@ -579,8 +592,8 @@ export function useNetworkConfig(onConfigApplied?: (cfg: Ipv4Config) => void) {
       doh1: cfg.doh1 ? { ...cfg.doh1 } : undefined,
       doh2: cfg.doh2 ? { ...cfg.doh2 } : undefined,
       ipv6Enabled: typeof cfg.ipv6Enabled === 'boolean' ? cfg.ipv6Enabled : undefined,
-      ipMode: cfg.ipMode || 'static',
-      dnsMode: cfg.dnsMode || 'static',
+      ipMode: cfg.ipMode || (cfg.ip.trim() ? 'static' : 'keep'),
+      dnsMode: cfg.dnsMode || (cfg.dns1?.trim() || cfg.dns2?.trim() ? 'static' : 'keep'),
       ipv6Mode: cfg.ipv6Mode || undefined,
       ipv6Ip: cfg.ipv6Ip || '',
       ipv6Prefix: typeof cfg.ipv6Prefix === 'number' || typeof cfg.ipv6Prefix === 'string' ? cfg.ipv6Prefix : undefined,

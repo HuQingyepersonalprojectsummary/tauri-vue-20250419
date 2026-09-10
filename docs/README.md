@@ -41,6 +41,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targe
 # 5. 执行单元测试与有状态回归测试
 cargo test --manifest-path src-tauri/Cargo.toml --locked --offline                   # Rust 领域逻辑与安全锁测试
 npm run test:regression                                                              # 有状态事务与故障注入回归测试
+npm run test:functional                                                              # 功能逻辑与意图保持回归测试 (18 项)
 
 # 6. 一键构建并导出全部发布文件 (便携 EXE、MSI、NSIS、校验和及指纹)
 npm run release

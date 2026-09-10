@@ -148,6 +148,14 @@ pub struct DohServerSetting {
     pub auto_upgrade: bool,
 }
 
+/// 单网卡 DoH 原始属性。None 与空字符串/零值不同，回滚必须保留属性缺失状态。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterDohSetting {
+    pub flags: Option<u64>,
+    pub template: Option<String>,
+}
+
 /// 适配器全息运行时快照（包含当前生效的 IPv4/IPv6/DNS/DoH 状态，兼备单项便捷字段）
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -190,6 +198,10 @@ pub struct AdapterSnapshot {
     /// Windows 注册表/系统级已注册的 DoH 服务器表 (N-02)
     #[serde(default)]
     pub doh_settings: HashMap<String, DohServerSetting>,
+    #[serde(default)]
+    pub has_interface_doh: bool,
+    #[serde(default)]
+    pub adapter_doh_settings: HashMap<String, AdapterDohSetting>,
     /// 系统内核是否支持 DoH
     #[serde(default = "default_true")]
     pub doh_supported: bool,
@@ -782,6 +794,9 @@ pub fn verify_snapshot_restored(
         Ok(())
     };
 
+    if before.adapter_doh_settings != current.adapter_doh_settings {
+        return Err("单网卡 DoH 条目或原始属性未完整恢复".to_string());
+    }
     verify_doh_equal(before.doh1.as_ref(), current.doh1.as_ref(), "首选 DNS")?;
     verify_doh_equal(before.doh2.as_ref(), current.doh2.as_ref(), "备用 DNS")?;
 
@@ -1026,6 +1041,8 @@ mod tests {
             ipv6_dns1: "".into(),
             ipv6_dns2: "".into(),
             doh_settings: HashMap::new(),
+            has_interface_doh: false,
+            adapter_doh_settings: HashMap::new(),
             doh_supported: true,
         };
 

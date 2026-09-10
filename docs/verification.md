@@ -1,6 +1,6 @@
 # Windows 网络配置工具验证记录与测试报告
 
-更新日期：2026-09-10  
+更新日期：2026-09-11  
 适用版本：v0.1.0 (Windows x64)
 
 本文档归纳当前 Windows 网络配置工具在开发、重构和多轮审计整改后的自动化验证结果、故障注入测试覆盖率以及推荐的实机集成验收流程。
@@ -9,7 +9,7 @@
 
 ## 1. 自动化验证矩阵
 
-当前代码基线在本地标准 Windows x64 开发构建环境中已通过全部离线静态检查、单元测试、有状态故障注入回归测试及发布构建：
+当前代码基线在本地标准 Windows x64 开发构建环境中已通过全部离线静态检查、单元测试、有状态故障注入回归测试、功能逻辑回归测试及发布构建：
 
 | 检查项 | 验证命令 | 结果 | 覆盖范围与说明 |
 |---|---|---|---|
@@ -18,6 +18,7 @@
 | **Rust 代码格式** | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | **0 diff** | 统一采用 `rustfmt` 标准格式规范 |
 | **前端类型检查** | `npm run typecheck` (`vue-tsc --noEmit`) | **0 errors** | 严格类型模式，Vue 组件、Composable、API 客户端及网络 DTO 类型全部匹配 |
 | **有状态事务回归** | `npm run test:regression` (`node tests/regression/ipv6/run.mjs`) | **12 passed** / 0 failed | 真实事务逻辑注入受控 IO：覆盖同 IP 替换补偿、来源变异、命令超时、DNS 校验、PowerShell/Vue composable 隔离探针 |
+| **功能逻辑回归** | `npm run test:functional` (`tests/regression/functional/`) | **18 passed** (12 前端 + 6 原生) | 涵盖 IPv4/DNS 保持意图隔离、DoH 独立 restore 回滚、IPv6 失败回滚 DoH、权限等待锁定防漂移、关闭 IPv6 容错校验等 |
 | **全量打包验证** | `npm run release` (`scripts/build-release.ps1`) | **Success** | 成功生成便携 EXE（中英文双命名）、MSI 安装包、NSIS 安装包及对应 SHA256SUMS.txt 和 release-manifest.json |
 
 ---
@@ -81,6 +82,18 @@
   - 拓展 PowerShell 异常模式匹配，涵盖标准 CIM 错误号与本地化异常文本，确保在 DoH 条目不存在时均能被安全识别并初始化为空映射，不阻断正常网络配置。
 - **验证**：生产环境真实 Windows 多语言 CIM 脚本执行验证通过。
 
+### 2.9 FA-01 ~ FA-08：状态同步、DoH 事务回滚与意图隔离闭环
+- **问题背景**：在 2026-09-10 功能复审中，发现 8 项关于意图保持与 DoH 恢复的问题（详见 `docs/audit/2026-09-10-functional/README.md`）。
+- **修复方案**：
+  - **FA-01 / FA-06**：前端与 Rust 领域模型新增 IPv4 与 DNS 的 `keep`（保持现状）枚举模式。用户仅修改 IPv6 时，绝不重提 IPv4 或误将已有 DoH 关闭。
+  - **FA-02**：DoH 回滚采用 `restore` 动作，将单网卡 `adapterDohSettings` 与全局 `dohSettings` 分开独立还原，不再从全局设置覆盖单网卡配置。
+  - **FA-03**：IPv6 DNS 切换失败时将触及的 IPv6 DNS 服务器纳入 DoH 逆向补偿与核验，确保恢复彻底。
+  - **FA-04**：前端管理员权限异步检查期间立即锁定 `isApplying` 忙碌状态并冻结提交载荷，防止二次点击与网卡切换导致的目标漂移。
+  - **FA-05**：当 `ipv6Enabled=false` 时，忽略已隐藏的无效静态 IPv6 字段校验；重新开启静态模式时仍严格断言。
+  - **FA-07**：前端与 Rust 均统一校验：手动 IPv4 DNS 必须填写首选 DNS，禁止空白或无效输入进入系统调用。
+  - **FA-08**：网卡列表变空时彻底清空旧快照与表单；网卡枚举尚未完成时维持加载锁，避免旧请求污染新网卡。
+- **验证**：通过 `npm run test:functional`（包含 12 项前端场景与 6 项底层原生事务场景）。
+
 ---
 
 ## 3. 发布物完整性记录
@@ -89,10 +102,10 @@
 
 | 产物名称 | 大小 (Bytes) | SHA-256 哈希值 |
 |---|---|---|
-| `Windows网络配置工具.exe` | 2,094,592 | `0abf9f9846e1e5e776acf95da37f05e85fc1281651014807d38345fee26ecb12` |
-| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,094,592 | `0abf9f9846e1e5e776acf95da37f05e85fc1281651014807d38345fee26ecb12` |
-| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,466,368 | `8c7016b4f0dafcbafe3995e042e3ea64f4d04061254b1e2bd6c1f06345042edc` |
-| `Windows网络配置工具_0.1.0_x64-setup.exe` | 952,452 | `a32157d8ced46f39d27457d7ffbfc169aca5f841f3447579bb24e8f5e87ed875` |
+| `Windows网络配置工具.exe` | 2,108,416 | `1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795` |
+| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,108,416 | `1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795` |
+| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,470,464 | `377faa39dbf1b6a23fccf8932746c752a6487096e8c589fee197b70b0e5f7ba7` |
+| `Windows网络配置工具_0.1.0_x64-setup.exe` | 955,574 | `5274415612af90a2ec32329a9147e5f2f7dae55253b59c9fca132b7c52f01009` |
 
 > [!NOTE]
 > 当前发布产物未配置商业 Authenticode 代码签名证书。SHA-256 校验和用于完整性核验，不代表发布者机构身份认证。

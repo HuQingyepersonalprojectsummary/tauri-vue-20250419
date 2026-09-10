@@ -269,7 +269,7 @@ onMounted(() => {
           <div class="mode-select-group">
             <div class="mode-select-header">
               <label for="select-ip-mode">IPv4 地址分配</label>
-              <span class="mode-hint">{{ ipConfig.ipMode === 'dhcp' ? '由 DHCP 服务器自动分配，修改 DNS 或 IPv6 时不破坏 DHCP' : '手动配置静态 IP、掩码及默认网关' }}</span>
+              <span class="mode-hint">{{ ipConfig.ipMode === 'keep' ? '不修改现有 IPv4 地址、掩码及网关' : ipConfig.ipMode === 'dhcp' ? '由 DHCP 服务器自动分配' : '手动配置静态 IP、掩码及默认网关' }}</span>
             </div>
             <div class="select-wrapper">
               <select
@@ -277,6 +277,7 @@ onMounted(() => {
                 v-model="ipConfig.ipMode"
                 :disabled="isLoading"
               >
+                <option value="keep">保持现状 (不修改 IPv4 地址)</option>
                 <option value="dhcp">自动获取 (DHCP)</option>
                 <option value="static">手动配置 (静态)</option>
               </select>
@@ -284,7 +285,11 @@ onMounted(() => {
           </div>
 
           <!-- DHCP 模式提示 vs 静态 IP 字段 -->
-          <div v-if="ipConfig.ipMode === 'dhcp'" class="dhcp-info-banner">
+          <div v-if="ipConfig.ipMode === 'keep'" class="dhcp-info-banner">
+            <span>保持当前 IPv4 配置。修改 DNS 或 IPv6 时不会重写 IPv4 地址。</span>
+            <span v-if="currentSnapshot?.ip">当前地址：{{ currentSnapshot.ip }} / {{ currentSnapshot.mask }}</span>
+          </div>
+          <div v-else-if="ipConfig.ipMode === 'dhcp'" class="dhcp-info-banner">
             <span>ℹ️ 当前设置为 <strong>DHCP 自动获取 IP</strong>，修改 DNS 或 IPv6 不会将 IP 转为静态。</span>
             <span v-if="ipConfig.ip" class="dhcp-lease-info">当前租约 IP: {{ ipConfig.ip }} / {{ ipConfig.mask }}</span>
           </div>
@@ -331,7 +336,7 @@ onMounted(() => {
           <div class="mode-select-group">
             <div class="mode-select-header">
               <label for="select-dns-mode">DNS 服务器分配</label>
-              <span class="mode-hint">{{ ipConfig.dnsMode === 'dhcp' ? '由 DHCP 服务器自动提供 DNS 地址' : '手动指定首选/备用 DNS 与 DoH 加密' }}</span>
+              <span class="mode-hint">{{ ipConfig.dnsMode === 'keep' ? '不修改现有 DNS 与 DoH 配置' : ipConfig.dnsMode === 'dhcp' ? '由 DHCP 服务器自动提供 DNS 地址' : '手动指定首选/备用 DNS 与 DoH 加密' }}</span>
             </div>
             <div class="select-wrapper">
               <select
@@ -340,12 +345,16 @@ onMounted(() => {
                 :disabled="isLoading"
               >
                 <option value="dhcp">自动获取 (DHCP)</option>
+                <option value="keep">保持现状 (不修改 DNS / DoH)</option>
                 <option value="static">手动配置 (静态 / DoH)</option>
               </select>
             </div>
           </div>
 
-          <div v-if="ipConfig.dnsMode === 'dhcp'" class="dhcp-info-banner">
+          <div v-if="ipConfig.dnsMode === 'keep'" class="dhcp-info-banner">
+            <span>保持当前 DNS 与 DoH 配置。需要编辑时请选择手动配置。</span>
+          </div>
+          <div v-else-if="ipConfig.dnsMode === 'dhcp'" class="dhcp-info-banner">
             <span>ℹ️ 当前设置为 <strong>自动获取 DNS (DHCP)</strong>，无需配置自定义 DNS 或 DoH。</span>
           </div>
 
@@ -373,10 +382,11 @@ onMounted(() => {
             <!-- 首选 DNS 与 DoH 加密配置 (匹配 Windows 11 编辑 IP 设置) -->
             <div class="dns-section-card">
               <div class="form-group">
-                <label for="input-dns1">首选 DNS 服务器 <span class="optional">(可选)</span></label>
+                <label for="input-dns1">首选 DNS 服务器 <span class="required">*</span></label>
                 <input
                   id="input-dns1"
                   v-model="ipConfig.dns1"
+                  required
                   placeholder="例如 223.5.5.5 或 8.8.8.8"
                   :disabled="isLoading"
                   autocomplete="off"
@@ -700,7 +710,7 @@ onMounted(() => {
             <button
               type="button"
               class="btn btn-secondary"
-              :disabled="isLoading || (ipConfig.ipMode === 'static' && !ipConfig.ip)"
+              :disabled="isLoading || !selectedAdapter || (ipConfig.ipMode === 'static' && !ipConfig.ip)"
               @click="saveConfig(ipConfig)"
             >
               保存至预设
@@ -780,16 +790,16 @@ onMounted(() => {
                 <span v-if="item.ipv6Dns1" class="history-dns">IPv6 DNS1: {{ item.ipv6Dns1 }}</span>
                 <span v-if="item.ipv6Dns2" class="history-dns">IPv6 DNS2: {{ item.ipv6Dns2 }}</span>
                 <span v-if="item.ipMode" :class="['badge-sm', item.ipMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
-                  IP: {{ item.ipMode === 'dhcp' ? 'DHCP' : '静态' }}
+                  IP: {{ item.ipMode === 'keep' ? '保持' : item.ipMode === 'dhcp' ? 'DHCP' : '静态' }}
                 </span>
                 <span v-if="item.dnsMode" :class="['badge-sm', item.dnsMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
-                  DNS: {{ item.dnsMode === 'dhcp' ? 'DHCP' : '静态' }}
+                  DNS: {{ item.dnsMode === 'keep' ? '保持' : item.dnsMode === 'dhcp' ? 'DHCP' : '静态' }}
                 </span>
                 <span v-if="item.ipv6Mode" :class="['badge-sm', item.ipv6Mode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
-                  IPv6 IP: {{ item.ipv6Mode === 'dhcp' ? 'DHCP' : '静态' }}
+                  IPv6 IP: {{ item.ipv6Mode === 'keep' ? '保持' : item.ipv6Mode === 'dhcp' ? 'DHCP' : '静态' }}
                 </span>
                 <span v-if="item.ipv6DnsMode" :class="['badge-sm', item.ipv6DnsMode === 'dhcp' ? 'badge-dhcp' : 'badge-static']">
-                  IPv6 DNS: {{ item.ipv6DnsMode === 'dhcp' ? 'DHCP' : '静态' }}
+                  IPv6 DNS: {{ item.ipv6DnsMode === 'keep' ? '保持' : item.ipv6DnsMode === 'dhcp' ? 'DHCP' : '静态' }}
                 </span>
                 <span v-if="item.doh1 && item.doh1.mode !== 'off'" class="badge-sm badge-doh">
                   DoH1: {{ item.doh1.mode === 'manual' ? '手动' : '自动' }}

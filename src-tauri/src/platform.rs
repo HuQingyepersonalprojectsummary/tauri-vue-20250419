@@ -568,7 +568,8 @@ if ($hasInterfaceDoh -and (Test-Path $interfaceDohRoot)) {
                 $mode = if ($isManual) { 'manual' } elseif ($isAuto) { 'auto' } else { 'off' }
                 $adapterDohSettings[$ip] = @{
                     mode = $mode
-                    template = $tmpl
+                    flags = if ($p.PSObject.Properties['DohFlags']) { [uint64]$p.DohFlags } else { $null }
+                    template = if ($p.PSObject.Properties['DohTemplate']) { [string]$p.DohTemplate } else { $null }
                     allowFallback = $allowFb
                 }
             }
@@ -590,7 +591,8 @@ if ($hasInterfaceDoh -and (Test-Path $interfaceDohRoot)) {
                 $mode = if ($isManual) { 'manual' } elseif ($isAuto) { 'auto' } else { 'off' }
                 $adapterDohSettings[$ip] = @{
                     mode = $mode
-                    template = $tmpl
+                    flags = if ($p.PSObject.Properties['DohFlags']) { [uint64]$p.DohFlags } else { $null }
+                    template = if ($p.PSObject.Properties['DohTemplate']) { [string]$p.DohTemplate } else { $null }
                     allowFallback = $allowFb
                 }
             }
@@ -728,11 +730,10 @@ if ($null -ne $ipv6Enabled) {
 }
 
 # 3. 设置 DoH 配置 (包含系统全局 DoH 表与 Windows 11 单网卡 DohInterfaceSettings 注册表配置，N-02, N-09)
-$adapterObj = Get-NetAdapter -Name $adapterName -ErrorAction SilentlyContinue
-if (-not $adapterObj) {
-    $adapterObj = Get-NetAdapter | Where-Object { $_.InterfaceAlias -eq $adapterName -or $_.Name -eq $adapterName } | Select-Object -First 1
-}
+$adapterObj = Get-NetAdapter -ErrorAction Stop | Where-Object { $_.Name -eq $adapterName } | Select-Object -First 1
 $adapterGuid = if ($adapterObj -and $adapterObj.InterfaceGuid) { $adapterObj.InterfaceGuid.ToString().ToLower() } else { '' }
+$hasInterfaceDoh = Test-Path 'HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters'
+if ($dohList.Count -gt 0 -and -not $adapterGuid) { throw '无法确定 DoH 目标网卡 GUID' }
 
 foreach ($item in $dohList) {
     $serverIp = [string]$item.serverIp
@@ -742,8 +743,21 @@ foreach ($item in $dohList) {
     $allowFallback = [bool]$item.allowFallback
     $action = [string]$item.action
 
+    $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
+    $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
+    # 移除已不再使用的 DNS 时，只清理单网卡条目，不能关闭其他网卡共享的全局策略。
+    if ($action -eq 'clearInterface') {
+        if (Test-Path -LiteralPath $serverRegPath) {
+            Remove-Item -LiteralPath $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        continue
+    }
+
     if (-not $hasDohCmdlet) {
         # 如果系统不支持 DoH 但请求关闭或删除，优雅跳过 (N-09)
+        if ($action -eq 'restore' -and ($null -ne $item.globalSetting -or $null -ne $item.interfaceSetting)) {
+            throw 'DoH 组件不可用，无法恢复原 DoH 条目'
+        }
         continue
     }
 
@@ -753,8 +767,8 @@ foreach ($item in $dohList) {
             if ($adapterGuid) {
                 $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
                 $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
-                if (Test-Path $serverRegPath) {
-                    Remove-Item -Path $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $serverRegPath) {
+                    Remove-Item -LiteralPath $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
             # 3.2 回滚时对于新增的 DoH 条目彻底删除，严格区分不存在与删除异常 (N-02)
@@ -785,13 +799,48 @@ foreach ($item in $dohList) {
             }
         }
 
+        if ($action -eq 'restore') {
+            # 全局表和单网卡原始属性独立恢复，绝不从全局模板反推单网卡模式。
+            $global = $item.globalSetting
+            if ($null -eq $global) {
+                if ($existing) { Remove-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop }
+            } else {
+                $params = @{ ServerAddress=$serverIp; AutoUpgrade=[bool]$global.autoUpgrade; AllowFallbackToUdp=[bool]$global.allowFallback; ErrorAction='Stop' }
+                if ($global.template) { $params.DohTemplate = [string]$global.template }
+                if ($existing) { Set-DnsClientDohServerAddress @params }
+                else { Add-DnsClientDohServerAddress @params }
+            }
+            if ($item.restoreInterface) {
+                $entry = $item.interfaceSetting
+                if ($null -eq $entry) {
+                    if (Test-Path -LiteralPath $serverRegPath) {
+                        Remove-Item -LiteralPath $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                } else {
+                    if (-not (Test-Path -LiteralPath $serverRegPath)) {
+                        New-Item -Path $serverRegPath -Force -ErrorAction Stop | Out-Null
+                    }
+                    if ($null -ne $entry.flags) {
+                        Set-ItemProperty -LiteralPath $serverRegPath -Name 'DohFlags' -Value ([uint64]$entry.flags) -Type QWord -Force -ErrorAction Stop
+                    } elseif ((Get-ItemProperty -LiteralPath $serverRegPath -ErrorAction SilentlyContinue).PSObject.Properties['DohFlags']) {
+                        Remove-ItemProperty -LiteralPath $serverRegPath -Name 'DohFlags' -ErrorAction SilentlyContinue
+                    }
+                    if ($null -ne $entry.template) {
+                        Set-ItemProperty -LiteralPath $serverRegPath -Name 'DohTemplate' -Value ([string]$entry.template) -Type String -Force -ErrorAction Stop
+                    } elseif ((Get-ItemProperty -LiteralPath $serverRegPath -ErrorAction SilentlyContinue).PSObject.Properties['DohTemplate']) {
+                        Remove-ItemProperty -LiteralPath $serverRegPath -Name 'DohTemplate' -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+            continue
+        }
         if ($mode -eq 'off') {
             # 3.3 关闭 DoH：清理单网卡注册表中的该 DNS 条目 (Windows 11 通过注册表条目是否存在决定单网卡 DoH 是否开启)
-            if ($adapterGuid) {
+            if ($adapterGuid -and $hasInterfaceDoh) {
                 $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
                 $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
-                if (Test-Path $serverRegPath) {
-                    Remove-Item -Path $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $serverRegPath) {
+                    Remove-Item -LiteralPath $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
             if ($existing) {
@@ -813,7 +862,7 @@ foreach ($item in $dohList) {
                 }
             }
             # 配置 Windows 11 单网卡注册表 (DohFlags: 6=自动+回退, 2=自动+严格)
-            if ($adapterGuid) {
+            if ($adapterGuid -and $hasInterfaceDoh) {
                 $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
                 $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
                 if (-not (Test-Path $serverRegPath)) {
@@ -837,7 +886,7 @@ foreach ($item in $dohList) {
                 Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop
             }
             # 配置 Windows 11 单网卡注册表 (DohFlags: 21=手动+回退, 17=手动+严格)
-            if ($adapterGuid) {
+            if ($adapterGuid -and $hasInterfaceDoh) {
                 $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
                 $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
                 if (-not (Test-Path $serverRegPath)) {
@@ -1125,6 +1174,11 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let adapter_doh_map = val.get("adapterDohSettings").and_then(|v| v.as_object());
+    let adapter_doh_settings = match val.get("adapterDohSettings") {
+        Some(map) => serde_json::from_value(map.clone())
+            .map_err(|e| format!("单网卡 DoH 快照数据无效: {}", e))?,
+        None => HashMap::new(),
+    };
 
     let extract_doh = |dns_ip: &str| -> Option<DohConfig> {
         let trimmed_ip = dns_ip.trim();
@@ -1318,6 +1372,8 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         doh2,
         ipv6_enabled,
         doh_settings,
+        has_interface_doh,
+        adapter_doh_settings,
         doh_supported,
         ipv6_mode,
         ipv6_ip,
@@ -1646,28 +1702,31 @@ pub fn rollback_snapshot_internal(
             servers_to_revert.push(ip.clone());
         }
     }
+    for ip in &snapshot.ipv6_dns_servers {
+        if !servers_to_revert.contains(ip) {
+            servers_to_revert.push(ip.clone());
+        }
+    }
+    for ip in snapshot.doh_settings.keys() {
+        if !servers_to_revert.contains(ip) {
+            servers_to_revert.push(ip.clone());
+        }
+    }
+    for ip in snapshot.adapter_doh_settings.keys() {
+        if !servers_to_revert.contains(ip) {
+            servers_to_revert.push(ip.clone());
+        }
+    }
 
     for ip in servers_to_revert {
-        if let Some(entry) = snapshot.doh_settings.get(&ip) {
-            // 原先存在此条目：完整还原模板与策略 (包括 off 时的 template 与 allow_fallback，N-02)
-            rb_doh.push(serde_json::json!({
-                "serverIp": ip,
-                "mode": if entry.auto_upgrade {
-                    if entry.template.is_empty() { "auto" } else { "manual" }
-                } else {
-                    "off"
-                },
-                "template": entry.template,
-                "allowFallback": entry.allow_fallback,
-                "action": "set",
-            }));
-        } else {
-            // 本次变更前不存在此 DoH 条目：回滚时彻底删除 (N-02)
-            rb_doh.push(serde_json::json!({
-                "serverIp": ip,
-                "action": "remove",
-            }));
-        }
+        rb_doh.push(serde_json::json!({
+            "serverIp": ip,
+            "action": "restore",
+            "mode": "off",
+            "globalSetting": snapshot.doh_settings.get(&ip),
+            "restoreInterface": snapshot.has_interface_doh,
+            "interfaceSetting": snapshot.adapter_doh_settings.get(&ip),
+        }));
     }
 
     if let Err(e) = apply_doh_and_ipv6_internal(target, Some(snapshot.ipv6_enabled), &rb_doh) {
@@ -1971,6 +2030,91 @@ pub fn rollback_snapshot_internal(
     }
 }
 
+/// 按修改意图生成 DoH 操作。省略配置表示保持，删除旧 DNS 仅清理单网卡覆盖。
+fn plan_doh_changes(
+    cfg: &Ipv4Config,
+    before: &AdapterSnapshot,
+    dns_mode: &str,
+    ipv6_dns_mode: &str,
+) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    if dns_mode == "static" {
+        for (ip, doh) in [(&cfg.dns1, &cfg.doh1), (&cfg.dns2, &cfg.doh2)] {
+            if let Some(doh) = doh.as_ref().filter(|_| !ip.trim().is_empty()) {
+                items.push(serde_json::json!({
+                    "serverIp": ip.trim(), "action": "set", "mode": doh.mode,
+                    "template": doh.template.trim(), "allowFallback": doh.allow_fallback,
+                }));
+            }
+        }
+    }
+    if before.has_interface_doh {
+        if dns_mode == "dhcp" || dns_mode == "static" {
+            for ip in &before.dns_servers {
+                if dns_mode == "dhcp" || (ip != cfg.dns1.trim() && ip != cfg.dns2.trim()) {
+                    items.push(
+                        serde_json::json!({"serverIp":ip,"action":"clearInterface","mode":"off"}),
+                    );
+                }
+            }
+        }
+        if cfg.ipv6_enabled != Some(false)
+            && (before.ipv6_enabled || cfg.ipv6_enabled == Some(true))
+            && (ipv6_dns_mode == "dhcp" || ipv6_dns_mode == "static")
+        {
+            for ip in &before.ipv6_dns_servers {
+                if ipv6_dns_mode == "dhcp"
+                    || (!crate::domain::ipv6_addr_eq(ip, cfg.ipv6_dns1.trim())
+                        && !crate::domain::ipv6_addr_eq(ip, cfg.ipv6_dns2.trim()))
+                {
+                    items.push(
+                        serde_json::json!({"serverIp":ip,"action":"clearInterface","mode":"off"}),
+                    );
+                }
+            }
+        }
+    }
+    items
+}
+
+/// 明确修改的 DoH 项之外，所有全局与单网卡条目必须保持原样。
+fn verify_doh_preserved(
+    before: &AdapterSnapshot,
+    current: &AdapterSnapshot,
+    plan: &[serde_json::Value],
+) -> Result<(), String> {
+    for ip in before
+        .doh_settings
+        .keys()
+        .chain(current.doh_settings.keys())
+    {
+        let changed = plan
+            .iter()
+            .any(|i| i["serverIp"] == *ip && i["action"] == "set");
+        if !changed && before.doh_settings.get(ip) != current.doh_settings.get(ip) {
+            return Err(format!("未请求修改的全局 DoH 条目发生变化: {}", ip));
+        }
+    }
+    for ip in before
+        .adapter_doh_settings
+        .keys()
+        .chain(current.adapter_doh_settings.keys())
+    {
+        let changed = plan.iter().any(|i| i["serverIp"] == *ip);
+        if !changed && before.adapter_doh_settings.get(ip) != current.adapter_doh_settings.get(ip) {
+            return Err(format!("未请求修改的单网卡 DoH 条目发生变化: {}", ip));
+        }
+    }
+    for item in plan.iter().filter(|i| i["action"] == "clearInterface") {
+        if let Some(ip) = item["serverIp"].as_str() {
+            if current.adapter_doh_settings.contains_key(ip) {
+                return Err(format!("旧 DNS 的单网卡 DoH 条目未清理: {}", ip));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 事务式应用 IPv4 网络配置，包含事前快照、执行、读回校验、自动回滚与回滚现场真值比对 (A-01, A-03, A-06, R-01, R-02, F-01, F-05, N-02, N-03, N-07)
 pub fn apply_adapter_ipv4_config_transactional(
     cfg: &Ipv4Config,
@@ -2030,13 +2174,16 @@ pub fn apply_adapter_ipv4_config_transactional(
     };
 
     if dns_mode == "static" {
+        if cfg.dns1.trim().is_empty() {
+            return Err("手动 IPv4 DNS 必须填写首选 DNS，如不修改请选择保持现状".to_string());
+        }
         validate_dns_combination(&cfg.dns1, &cfg.dns2)?;
         validate_doh_config(&cfg.dns1, cfg.doh1.as_ref(), "首选 DNS")?;
         validate_doh_config(&cfg.dns2, cfg.doh2.as_ref(), "备用 DNS")?;
     }
 
     // IPv6 语义校验
-    if ipv6_mode == "static" {
+    if cfg.ipv6_enabled != Some(false) && ipv6_mode == "static" {
         validate_ipv6(&cfg.ipv6_ip)?;
         let prefix = cfg.ipv6_prefix.unwrap_or(64);
         validate_ipv6_prefix(prefix)?;
@@ -2044,7 +2191,7 @@ pub fn apply_adapter_ipv4_config_transactional(
             validate_ipv6(&cfg.ipv6_gateway)?;
         }
     }
-    if ipv6_dns_mode == "static" {
+    if cfg.ipv6_enabled != Some(false) && ipv6_dns_mode == "static" {
         validate_ipv6_dns_combination(&cfg.ipv6_dns1, &cfg.ipv6_dns2)?;
     }
 
@@ -2101,7 +2248,8 @@ pub fn apply_adapter_ipv4_config_transactional(
         }
     }
 
-    // 收集所有本次可能影响的 DNS 服务器，用于精确回滚 (N-02)
+    // 写入前生成完整计划，IPv4 / IPv6 及部分执行的 DoH 均有恢复记录。
+    let doh_items = plan_doh_changes(cfg, &before_snapshot, &dns_mode, &ipv6_dns_mode);
     let mut touched_dns = Vec::new();
     if let Some(ref d1) = dns1_opt {
         touched_dns.push(d1.clone());
@@ -2111,9 +2259,11 @@ pub fn apply_adapter_ipv4_config_transactional(
             touched_dns.push(d2.clone());
         }
     }
-    for d in &before_snapshot.dns_servers {
-        if !touched_dns.contains(d) {
-            touched_dns.push(d.clone());
+    for item in &doh_items {
+        if let Some(ip) = item["serverIp"].as_str() {
+            if !touched_dns.iter().any(|s| s == ip) {
+                touched_dns.push(ip.to_string());
+            }
         }
     }
 
@@ -2294,60 +2444,6 @@ pub fn apply_adapter_ipv4_config_transactional(
     }
 
     // 5. 应用 DoH 与 IPv6 设置
-    let mut doh_items = Vec::new();
-    let mut configured_doh_ips = Vec::new();
-    if dns_mode == "static" {
-        if let Some(ref d1) = dns1_opt {
-            if let Some(ref doh1) = cfg.doh1 {
-                doh_items.push(serde_json::json!({
-                    "serverIp": d1,
-                    "mode": doh1.mode,
-                    "template": doh1.template,
-                    "allowFallback": doh1.allow_fallback,
-                    "action": "set",
-                }));
-                configured_doh_ips.push(d1.as_str());
-            }
-        }
-        if let Some(ref d2) = dns2_opt {
-            if let Some(ref doh2) = cfg.doh2 {
-                doh_items.push(serde_json::json!({
-                    "serverIp": d2,
-                    "mode": doh2.mode,
-                    "template": doh2.template,
-                    "allowFallback": doh2.allow_fallback,
-                    "action": "set",
-                }));
-                configured_doh_ips.push(d2.as_str());
-            }
-        }
-    }
-
-    // 清理当前网卡上曾经生效、但在本次配置中已被移除或已切换至 DHCP 的旧 DNS 服务器的单网卡 DoH 注册表
-    for old_dns in &before_snapshot.dns_servers {
-        if !configured_doh_ips.contains(&old_dns.as_str()) {
-            doh_items.push(serde_json::json!({
-                "serverIp": old_dns,
-                "mode": "off",
-                "template": "",
-                "allowFallback": true,
-                "action": "set",
-            }));
-        }
-    }
-
-    if ipv6_dns_mode == "dhcp" {
-        for old_v6_dns in &before_snapshot.ipv6_dns_servers {
-            doh_items.push(serde_json::json!({
-                "serverIp": old_v6_dns,
-                "mode": "off",
-                "template": "",
-                "allowFallback": true,
-                "action": "set",
-            }));
-        }
-    }
-
     if cfg.ipv6_enabled.is_some() || !doh_items.is_empty() {
         if let Err(err_doh) =
             apply_doh_and_ipv6_internal(&cfg.adapter, cfg.ipv6_enabled, &doh_items)
@@ -2677,6 +2773,9 @@ pub fn apply_adapter_ipv4_config_transactional(
         match get_adapter_snapshot(&cfg.adapter) {
             Ok(s) => {
                 let mut reasons = Vec::new();
+                if let Err(reason) = verify_doh_preserved(&before_snapshot, &s, &doh_items) {
+                    reasons.push(reason);
+                }
 
                 // 1. 网卡身份标识比对 (F-05)
                 if s.interface_guid != before_snapshot.interface_guid {
@@ -2766,6 +2865,9 @@ pub fn apply_adapter_ipv4_config_transactional(
                         } else {
                             if act_mode == "off" {
                                 return Some(format!("{} DoH未成功开启", label));
+                            }
+                            if s.has_interface_doh && act_mode != exp.mode {
+                                return Some(format!("{} DoH模式未匹配", label));
                             }
                             if exp.mode == "manual" {
                                 let act_tmpl = act_opt.map(|d| d.template.as_str()).unwrap_or("");
