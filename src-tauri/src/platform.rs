@@ -546,6 +546,58 @@ if ($hasDohCmdlet) {
     }
 }
 
+# 查询当前网卡在 Windows 11 注册表中的单网卡 DoH 加密配置 (InterfaceSpecificParameters)
+$adapterGuid = if ($adapter.InterfaceGuid) { $adapter.InterfaceGuid.ToString().ToLower() } else { '' }
+$interfaceDohRoot = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings"
+$hasInterfaceDoh = Test-Path $interfaceDohRoot
+$adapterDohSettings = @{}
+if ($hasInterfaceDoh) {
+    # 检查 IPv4 DoH
+    $ipv4DohPath = "$interfaceDohRoot\Doh"
+    if (Test-Path $ipv4DohPath) {
+        $subkeys = Get-ChildItem -Path $ipv4DohPath -ErrorAction SilentlyContinue
+        foreach ($k in $subkeys) {
+            $ip = $k.PSChildName
+            $p = Get-ItemProperty -Path $k.PSPath -ErrorAction SilentlyContinue
+            if ($p) {
+                $flags = [int64]$p.DohFlags
+                $tmpl = [string]$p.DohTemplate
+                $isManual = ($flags -band 0x10) -ne 0 -or $flags -eq 21 -or $flags -eq 17
+                $isAuto = ($flags -band 0x02) -ne 0 -or $flags -eq 6 -or $flags -eq 2
+                $allowFb = ($flags -band 0x04) -ne 0 -or $flags -eq 21 -or $flags -eq 6
+                $mode = if ($isManual) { 'manual' } elseif ($isAuto) { 'auto' } else { 'off' }
+                $adapterDohSettings[$ip] = @{
+                    mode = $mode
+                    template = $tmpl
+                    allowFallback = $allowFb
+                }
+            }
+        }
+    }
+    # 检查 IPv6 DoH
+    $ipv6DohPath = "$interfaceDohRoot\Doh6"
+    if (Test-Path $ipv6DohPath) {
+        $subkeys6 = Get-ChildItem -Path $ipv6DohPath -ErrorAction SilentlyContinue
+        foreach ($k in $subkeys6) {
+            $ip = $k.PSChildName
+            $p = Get-ItemProperty -Path $k.PSPath -ErrorAction SilentlyContinue
+            if ($p) {
+                $flags = [int64]$p.DohFlags
+                $tmpl = [string]$p.DohTemplate
+                $isManual = ($flags -band 0x10) -ne 0 -or $flags -eq 21 -or $flags -eq 17
+                $isAuto = ($flags -band 0x02) -ne 0 -or $flags -eq 6 -or $flags -eq 2
+                $allowFb = ($flags -band 0x04) -ne 0 -or $flags -eq 21 -or $flags -eq 6
+                $mode = if ($isManual) { 'manual' } elseif ($isAuto) { 'auto' } else { 'off' }
+                $adapterDohSettings[$ip] = @{
+                    mode = $mode
+                    template = $tmpl
+                    allowFallback = $allowFb
+                }
+            }
+        }
+    }
+}
+
 # 查询 IPv6 地址与前缀
 $ipv6Addresses = @()
 try {
@@ -621,12 +673,14 @@ if (Test-Path $regPath6) {
     ipv6Enabled = $ipv6Enabled
     dohSettings = $dohSettings
     dohSupported = $hasDohCmdlet
+    hasInterfaceDoh = $hasInterfaceDoh
+    adapterDohSettings = $adapterDohSettings
     ipv6Addresses = $ipv6Addresses
     ipv6Gateways = $ipv6Gateways
     ipv6DnsServers = $ipv6Dns
     ipv6DhcpEnabled = $ipv6Dhcp
     ipv6DnsDhcpEnabled = $ipv6DnsDhcpEnabled
-} | ConvertTo-Json -Compress -Depth 3
+} | ConvertTo-Json -Compress -Depth 4
 "#;
 
 // 固定 PowerShell 脚本：应用 DoH 与 IPv6 配置，通过 stdin JSON 传递参数杜绝注入 (A-01, N-02, N-06, N-09)
@@ -673,7 +727,13 @@ if ($null -ne $ipv6Enabled) {
     }
 }
 
-# 3. 设置 DoH 配置 (支持 remove 动作并严格捕获删除错误，N-02, N-09)
+# 3. 设置 DoH 配置 (包含系统全局 DoH 表与 Windows 11 单网卡 DohInterfaceSettings 注册表配置，N-02, N-09)
+$adapterObj = Get-NetAdapter -Name $adapterName -ErrorAction SilentlyContinue
+if (-not $adapterObj) {
+    $adapterObj = Get-NetAdapter | Where-Object { $_.InterfaceAlias -eq $adapterName -or $_.Name -eq $adapterName } | Select-Object -First 1
+}
+$adapterGuid = if ($adapterObj -and $adapterObj.InterfaceGuid) { $adapterObj.InterfaceGuid.ToString().ToLower() } else { '' }
+
 foreach ($item in $dohList) {
     $serverIp = [string]$item.serverIp
     if (-not $serverIp) { continue }
@@ -689,7 +749,15 @@ foreach ($item in $dohList) {
 
     try {
         if ($action -eq 'remove') {
-            # 回滚时对于新增的 DoH 条目彻底删除，严格区分不存在与删除异常 (N-02)
+            # 3.1 清理 Windows 11 单网卡注册表中的该 DNS 条目
+            if ($adapterGuid) {
+                $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
+                $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
+                if (Test-Path $serverRegPath) {
+                    Remove-Item -Path $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            # 3.2 回滚时对于新增的 DoH 条目彻底删除，严格区分不存在与删除异常 (N-02)
             $existing = $null
             try {
                 $existing = Get-DnsClientDohServerAddress -ServerAddress $serverIp -ErrorAction Stop
@@ -718,6 +786,14 @@ foreach ($item in $dohList) {
         }
 
         if ($mode -eq 'off') {
+            # 3.3 关闭 DoH：清理单网卡注册表中的该 DNS 条目 (Windows 11 通过注册表条目是否存在决定单网卡 DoH 是否开启)
+            if ($adapterGuid) {
+                $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
+                $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
+                if (Test-Path $serverRegPath) {
+                    Remove-Item -Path $serverRegPath -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
             if ($existing) {
                 if ($template) {
                     Set-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AutoUpgrade $false -AllowFallbackToUdp $allowFallback -ErrorAction Stop
@@ -726,6 +802,7 @@ foreach ($item in $dohList) {
                 }
             }
         } elseif ($mode -eq 'auto') {
+            # 3.4 自动升级模式
             if ($existing) {
                 Set-DnsClientDohServerAddress -ServerAddress $serverIp -AutoUpgrade $true -AllowFallbackToUdp $allowFallback -ErrorAction Stop
             } else {
@@ -735,7 +812,22 @@ foreach ($item in $dohList) {
                     throw "服务器 $serverIp 不在内置自动 DoH 列表中，请选择手动模板模式指定 DoH 模板"
                 }
             }
+            # 配置 Windows 11 单网卡注册表 (DohFlags: 6=自动+回退, 2=自动+严格)
+            if ($adapterGuid) {
+                $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
+                $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
+                if (-not (Test-Path $serverRegPath)) {
+                    New-Item -Path $serverRegPath -Force -ErrorAction Stop | Out-Null
+                }
+                $flags = if ($allowFallback) { [int64]6 } else { [int64]2 }
+                Set-ItemProperty -Path $serverRegPath -Name 'DohFlags' -Value $flags -Type QWord -Force -ErrorAction Stop
+                $effectiveTmpl = if ($template) { $template } elseif ($existing -and $existing.DohTemplate) { [string]$existing.DohTemplate } else { '' }
+                if ($effectiveTmpl) {
+                    Set-ItemProperty -Path $serverRegPath -Name 'DohTemplate' -Value $effectiveTmpl -Type String -Force -ErrorAction Stop
+                }
+            }
         } elseif ($mode -eq 'manual') {
+            # 3.5 手动模板模式
             if (-not $template) {
                 throw "服务器 $serverIp 选择手动模板模式但未填写 DoH 模板 URL"
             }
@@ -744,11 +836,25 @@ foreach ($item in $dohList) {
             } else {
                 Add-DnsClientDohServerAddress -ServerAddress $serverIp -DohTemplate $template -AllowFallbackToUdp $allowFallback -AutoUpgrade $true -ErrorAction Stop
             }
+            # 配置 Windows 11 单网卡注册表 (DohFlags: 21=手动+回退, 17=手动+严格)
+            if ($adapterGuid) {
+                $subKey = if ($serverIp.Contains(':')) { 'Doh6' } else { 'Doh' }
+                $serverRegPath = "HKLM:\System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$adapterGuid\DohInterfaceSettings\$subKey\$serverIp"
+                if (-not (Test-Path $serverRegPath)) {
+                    New-Item -Path $serverRegPath -Force -ErrorAction Stop | Out-Null
+                }
+                $flags = if ($allowFallback) { [int64]21 } else { [int64]17 }
+                Set-ItemProperty -Path $serverRegPath -Name 'DohFlags' -Value $flags -Type QWord -Force -ErrorAction Stop
+                Set-ItemProperty -Path $serverRegPath -Name 'DohTemplate' -Value $template -Type String -Force -ErrorAction Stop
+            }
         }
     } catch {
         throw "配置 DNS over HTTPS ($serverIp) 失败: $_"
     }
 }
+
+# 刷新 DNS 客户端缓存以便即时生效
+Clear-DnsClientCache -ErrorAction SilentlyContinue
 
 [PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress
 "#;
@@ -1014,11 +1120,53 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
         }
     }
 
+    let has_interface_doh = val
+        .get("hasInterfaceDoh")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let adapter_doh_map = val.get("adapterDohSettings").and_then(|v| v.as_object());
+
     let extract_doh = |dns_ip: &str| -> Option<DohConfig> {
-        if dns_ip.trim().is_empty() {
+        let trimmed_ip = dns_ip.trim();
+        if trimmed_ip.is_empty() {
             return None;
         }
-        let server_info = doh_map.and_then(|m| m.get(dns_ip))?;
+
+        // 如果系统具有 Windows 11 单网卡 DohInterfaceSettings 注册表配置环境，优先以单网卡配置为准
+        if has_interface_doh {
+            if let Some(info) = adapter_doh_map.and_then(|m| m.get(trimmed_ip)) {
+                let mode = info
+                    .get("mode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("off")
+                    .to_string();
+                let template = info
+                    .get("template")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let allow_fallback = info
+                    .get("allowFallback")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                return Some(DohConfig {
+                    mode,
+                    template,
+                    allow_fallback,
+                });
+            } else {
+                // Windows 11 环境下单网卡未注册该 DNS 的 DoH，在系统设置中即为“关”
+                return Some(DohConfig {
+                    mode: "off".to_string(),
+                    template: String::new(),
+                    allow_fallback: true,
+                });
+            }
+        }
+
+        // 回退兼容：Windows 10 或单元测试 mock 快照，从全局 dohSettings 提取
+        let server_info = doh_map.and_then(|m| m.get(trimmed_ip))?;
         let auto_upgrade = server_info
             .get("autoUpgrade")
             .and_then(|v| v.as_bool())

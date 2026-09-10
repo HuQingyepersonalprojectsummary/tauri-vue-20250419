@@ -89,10 +89,10 @@
 
 | 产物名称 | 大小 (Bytes) | SHA-256 哈希值 |
 |---|---|---|
-| `Windows网络配置工具.exe` | 2,085,888 | `2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d` |
-| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,085,888 | `2eb127350141b009505a022d830d18390ddb7533cb9e1658b9acaa24d2176c5d` |
-| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,462,272 | `4b871913ee7c94207b4b3fd94c2ee6d0cd687ca045fa8f73fc1e58787249ca38` |
-| `Windows网络配置工具_0.1.0_x64-setup.exe` | 951,227 | `faef37a4368560a10aa14a0c3e0167f24f39467c5eabc06a0ac819bef323e88f` |
+| `Windows网络配置工具.exe` | 2,092,544 | `6cdc265db326e979e48d644ac5abc9a16518fd6878d4797cf0817e35af1c85ed` |
+| `Windows_Network_Config_Tool_v0.1.0.exe` | 2,092,544 | `6cdc265db326e979e48d644ac5abc9a16518fd6878d4797cf0817e35af1c85ed` |
+| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | 1,462,272 | `d2e1ef89fe32e280bfbd70f1c0adf7494833e400709ff780d69bb8377aaa5747` |
+| `Windows网络配置工具_0.1.0_x64-setup.exe` | 952,056 | `d969b8a565f827051f07ee853226125d034b218113a9308f14067ae9ad38b505` |
 
 > [!NOTE]
 > 当前发布产物未配置商业 Authenticode 代码签名证书。SHA-256 校验和用于完整性核验，不代表发布者机构身份认证。
