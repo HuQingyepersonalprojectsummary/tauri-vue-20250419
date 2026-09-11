@@ -80,13 +80,11 @@ IPv4 地址、IPv4 DNS、IPv6 地址和 IPv6 DNS 可分别设置，程序只修�
 
 ## 📸 界面预览
 
-### 主界面
-
-![Windows 网络配置工具主界面](./assets/PixPin_2025-04-22_20-36-01.png)
-
-### 网络配置界面
-
-![Windows 网络配置工具网络配置界面](./assets/PixPin_2025-04-22_20-35-34.png)
+<div align="center">
+  <img src="./assets/PixPin_2025-04-22_20-36-01.png" alt="界面预览 A" width="42%" />
+  &nbsp;&nbsp;
+  <img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="界面预览 B" width="42%" />
+</div>
 
 ------
 
