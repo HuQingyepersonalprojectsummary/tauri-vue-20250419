@@ -1,6 +1,7 @@
 # Windows 网络配置工具 (Windows Network Config Tool)
 
-<div align="center">
+# Windows 网络配置工具
+
 ![Tauri](https://img.shields.io/badge/Tauri-1.5-24C8D8?style=flat-square&logo=tauri&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -8,118 +9,375 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D4?style=flat-square&logo=windows&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen?style=flat-square)
 
-<p>基于 Vue 3、TypeScript、Rust 与 Tauri 1 构建的现代化 Windows 网络适配器管理工具。<br/>提供高可靠的 IPv4、IPv6、DNS、DoH 配置读写、特权前置校验与自动化逆向事务补偿。</p>
+一款基于 **Vue 3 + TypeScript + Rust + Tauri** 开发的 Windows 网络配置工具。
 
-<img src="./assets/PixPin_2025-04-22_20-36-01.png" alt="Windows 网络配置工具界面预览A" width="460" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);" />
+用于管理 Windows 网络适配器的 IPv4、IPv6、DNS 与 DNS over HTTPS（DoH）配置，并提供配置校验、失败恢复、历史记录等功能。
 
-</div>
+------
 
-<img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="Windows 网络配置工具界面预览B" width="460" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);" />
+## ✨ 功能介绍
 
-</div>
+### 🌐 IPv4 / IPv6 配置
 
----
+支持分别管理网络适配器的 IPv4 和 IPv6 配置。
 
-## 🌟 核心特性
+可以针对不同配置项选择：
 
-- 🌐 **IPv4 / IPv6 双栈独立控制**：支持分别针对 IPv4 地址、IPv4 DNS、IPv6 地址及 IPv6 DNS 进行“保持现状”、“自动 (DHCP/SLAAC)”或“手动静态”配置，仅对明确选中的项进行修改。
-- 🛡️ **逆向补偿事务与精确读回核验**：执行任何修改前自动留存网卡物理状态快照。配置失败或超时即刻启动逆向补偿序列，并在补偿后强制读回系统物理现场；绝不将未完全恢复伪报为成功。
-- 🔒 **DNS over HTTPS (DoH) 加密解析**：内置常用公共 DNS 预设，支持一键配置系统级 DoH 自动升级模式、自定义 HTTPS 模板及明文降级回退选项。
-- ⚡ **无黑框静默执行与进程治理**：底层原生调用 PowerShell 与 netsh 均配置 `CREATE_NO_WINDOW` 抑制控制台弹窗，并通过 Windows Job Object（作业对象）杜绝超时或崩溃引发的孤儿子进程。
-- 🔐 **跨进程并发锁与特权前置防护**：采用 Windows 全局命名互斥体（Global Named Mutex）避免多实例竞态修改；写操作前主动检测管理员权限凭据，普通权限优雅阻断并提示提权。
-- 🔄 **禁用 IPv6 网卡平滑兼容**：针对虚拟网卡或显式禁用 IPv6 协议栈的适配器，底层 CIM 查询自动容错回退，保障常规 IPv4 与 DNS 读写不受阻断。
-- 📝 **配置历史与多网卡草稿**：本地保存最近 10 条有效历史配置；界面切换网卡时自动暂存当前编辑草稿，避免重复输入。
+- **保持现状**
+- **自动获取**
+- **手动配置**
 
----
+IPv4 地址、IPv4 DNS、IPv6 地址和 IPv6 DNS 可分别设置，程序只修改用户明确选择的配置项。
 
-## 📦 下载与运行
+### 🔒 DNS over HTTPS（DoH）
 
-当前版本为 **v0.1.0**，构建目标为 **Windows x64**。预编译发布文件存放在 [releases/](./releases/)：
+支持 Windows 系统级 DNS over HTTPS 配置。
 
-| 文件名称 | 格式类型 | 说明 |
-|---|---|---|
-| [Windows网络配置工具.exe](./releases/Windows网络配置工具.exe) | 便携免安装版 | 绿色单文件，解压即用 |
-| [Windows_Network_Config_Tool_v0.1.0.exe](./releases/Windows_Network_Config_Tool_v0.1.0.exe) | 便携免安装版 (英文名) | 与上述便携版内容一致，供脚本或英文环境引用 |
-| [Windows网络配置工具_0.1.0_x64-setup.exe](./releases/Windows网络配置工具_0.1.0_x64-setup.exe) | NSIS 安装包 | 标准 Windows 桌面安装向导 |
-| [Windows网络配置工具_0.1.0_x64_zh-CN.msi](./releases/Windows网络配置工具_0.1.0_x64_zh-CN.msi) | MSI 安装包 | 企业部署及 Windows Installer 规范安装包 |
+主要功能包括：
 
-### 校验和与完整性
-- 完整性校验哈希表见 [releases/SHA256SUMS.txt](./releases/SHA256SUMS.txt)。
-- 构建输入源指纹与构建元数据记录于 [releases/release-manifest.json](./releases/release-manifest.json)。
+- 常用公共 DNS 服务器预设
+- DoH 自动升级模式
+- 自定义 DoH HTTPS 模板
+- 明文 DNS 回退配置
+
+### 🛡️ 配置失败恢复
+
+在修改网络配置前，程序会保存当前网络适配器的相关状态。
+
+如果配置过程中发生失败或超时，程序会尝试按照保存的状态恢复相关配置，并重新读取系统中的实际网络状态进行核验。
+
+> 网络配置涉及 Windows 多个系统组件，因此恢复过程仍可能受到操作系统状态、驱动程序或第三方网络软件影响。
+
+### ⚡ 静默执行系统命令
+
+底层调用 PowerShell、`netsh` 等系统工具时使用无控制台窗口方式运行，避免执行网络配置过程中频繁弹出命令行窗口。
+
+同时使用 Windows Job Object 管理相关子进程，降低命令超时或程序异常退出后遗留后台进程的可能性。
+
+### 🔐 管理员权限检查
+
+修改 Windows 网络适配器、IP 地址和 DNS 配置通常需要管理员权限。
+
+程序会在执行写操作前检查当前权限。如果权限不足，将阻止相关操作并提示用户使用管理员权限运行程序。
+
+### 🔄 多种网络适配器兼容
+
+程序对部分特殊网络环境进行了兼容处理，包括：
+
+- IPv6 被禁用的网络适配器
+- 虚拟网络适配器
+- IPv4 / IPv6 状态不完整的网络环境
+
+当 IPv6 查询不可用时，程序会进行容错处理，尽量避免影响 IPv4 和 DNS 配置功能。
+
+### 📝 配置历史与编辑草稿
+
+支持保存最近 **10 条有效网络配置记录**。
+
+切换不同网络适配器时，当前正在编辑的内容会暂时保存，减少重复输入。
+
+------
+
+## 📸 界面预览
+
+
+
+------
+
+## 📦 下载
+
+当前版本：
+
+**v0.1.0**
+
+当前提供 **Windows x64** 构建。
+
+预编译程序位于：
+
+```text
+releases/
+```
+
+| 文件                                      | 类型   | 说明                                                     |
+| ----------------------------------------- | ------ | -------------------------------------------------------- |
+| `Windows网络配置工具.exe`                 | 便携版 | 无需安装，可直接运行                                     |
+| `Windows_Network_Config_Tool_v0.1.0.exe`  | 便携版 | 与中文版文件名的便携版本内容一致，便于英文环境或脚本调用 |
+| `Windows网络配置工具_0.1.0_x64-setup.exe` | NSIS   | Windows 安装程序                                         |
+| `Windows网络配置工具_0.1.0_x64_zh-CN.msi` | MSI    | Windows Installer 安装包，可用于标准化或企业部署         |
+
+### 文件完整性校验
+
+发布文件的 SHA-256 校验值位于：
+
+```text
+releases/SHA256SUMS.txt
+```
+
+构建输入信息及相关发布元数据位于：
+
+```text
+releases/release-manifest.json
+```
+
+------
+
+## 🚀 使用方法
+
+### 1. 安装 WebView2 Runtime
+
+程序界面基于 Tauri WebView，需要 Microsoft Edge WebView2 Runtime。
+
+Windows 10 / Windows 11 通常已经安装 WebView2 Runtime。
+
+如果程序无法正常显示界面，请检查系统是否安装：
+
+**Microsoft Edge WebView2 Runtime**
+
+### 2. 使用管理员权限运行
+
+Windows 修改网络适配器、IP 地址以及 DNS 设置需要管理员权限。
+
+建议：
+
+1. 右键单击程序；
+2. 选择 **“以管理员身份运行”**；
+3. 在 UAC 提示中确认授权。
+
+### 3. 选择网络适配器
+
+启动程序后选择需要配置的网络适配器，然后根据需要修改：
+
+- IPv4 地址
+- IPv4 DNS
+- IPv6 地址
+- IPv6 DNS
+- DNS over HTTPS
+
+未选择修改的配置项将尽量保持原有状态。
 
 > [!IMPORTANT]
-> - **运行依赖**：需要系统中已安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 10/11 系统通常已内置）。
-> - **管理员权限**：Windows 操作系统限制网络适配器与 DNS 修改必须具备管理员特权。请右键程序选择**“以管理员身份运行”**。
+> 修改网络配置可能导致当前网络连接暂时中断。远程连接环境下操作时，请确认具有其他恢复网络配置的方法。
 
----
+------
 
-## 🛠️ 本地开发与构建
+# 🛠️ 开发指南
 
-### 1. 环境准备
-- 操作系统：Windows x64
-- Shell：PowerShell 7 (`pwsh`)
-- 运行时与编译链：Node.js >= 20、Rust/Cargo >= 1.75、Visual Studio C++ Build Tools 与 Windows SDK
+## 环境要求
+
+推荐在 **Windows x64** 环境下进行开发和构建。
+
+需要安装：
+
+| 环境         | 要求                            |
+| ------------ | ------------------------------- |
+| Windows      | Windows x64                     |
+| PowerShell   | PowerShell 7 (`pwsh`)           |
+| Node.js      | >= 20                           |
+| Rust / Cargo | >= 1.75                         |
+| C++ 工具链   | Visual Studio C++ Build Tools   |
+| Windows SDK  | 已安装                          |
+| WebView2     | Microsoft Edge WebView2 Runtime |
+
+------
+
+## 安装依赖
+
+项目使用 Yarn Classic 安装前端依赖。
+
+在项目根目录执行：
 
 ```powershell
-# 使用项目约定的 Yarn Classic 安装前端依赖
 npx --yes yarn@1.22.22 install --frozen-lockfile
+```
 
-# 预取并锁定 Rust 原生依赖
+预取 Rust 依赖：
+
+```powershell
 cargo fetch --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-### 2. 启动桌面端调试
+------
+
+## 启动开发环境
+
+运行：
+
 ```powershell
-# 启动 Tauri 桌面端热重载开发环境（Vite 固定监听 3000 端口）
 npm run tauri -- dev
 ```
-> `npm run dev` 仅启动网页端，无法调用 Tauri 底层原生 IPC。
 
-### 3. 代码规范、单元测试与回归测试
+该命令会启动 Tauri 桌面应用以及对应的前端开发环境。
+
+Vite 开发服务器固定监听：
+
+```text
+http://localhost:3000
+```
+
+> [!NOTE]
+> 单独运行 `npm run dev` 只会启动前端 Web 开发服务器。
+>
+> 浏览器环境无法直接调用 Tauri 提供的原生 IPC 接口，因此涉及网络适配器读取、网络配置修改等功能时，应使用：
+>
+> ```powershell
+> npm run tauri -- dev
+> ```
+
+------
+
+# 🧪 测试与代码检查
+
+项目包含 TypeScript 类型检查、Rust 格式检查、Clippy 静态检查、Rust 单元测试以及回归测试。
+
+## TypeScript 类型检查
+
 ```powershell
-# 前端 TypeScript 严格类型检查
 npm run typecheck
+```
 
-# Rust 代码格式检查
+用于检查前端 TypeScript 类型错误。
+
+------
+
+## Rust 格式检查
+
+```powershell
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+```
 
-# Rust 零警告静态检查
+检查 Rust 源代码是否符合 `rustfmt` 格式规范。
+
+------
+
+## Rust Clippy
+
+```powershell
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
+```
 
-# Rust 单元测试（包含网络验证、锁机制、netsh 参数及提权检测等 17 项用例）
+运行 Rust Clippy 静态分析，并将警告视为错误。
+
+> 使用 `--offline` 前，请确保所需 Rust 依赖已经下载到本地。
+
+------
+
+## Rust 单元测试
+
+```powershell
 cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
+```
 
-# 有状态事务逆向补偿与故障注入回归测试（12 项场景）
+当前测试覆盖包括：
+
+- 网络配置验证
+- 并发锁
+- `netsh` 参数处理
+- 管理员权限检测
+- 相关底层网络逻辑
+
+------
+
+## 事务恢复与故障注入回归测试
+
+```powershell
 npm run test:regression
+```
 
-# 功能逻辑与意图保持回归测试（18 项用例：12 前端 + 6 原生）
+用于验证网络配置修改失败、异常及故障注入场景下的恢复逻辑。
+
+------
+
+## 功能回归测试
+
+```powershell
 npm run test:functional
 ```
 
-### 4. 一键打包发布
+用于验证前端和原生端的主要功能逻辑以及用户配置意图是否能够正确传递和执行。
+
+------
+
+# 📦 构建与发布
+
+## 一键构建
+
+在满足构建环境要求后执行：
+
 ```powershell
-# 一键生成前端、便携 EXE、MSI 和 NSIS，并导出至 releases 目录
 npm run release
 ```
-也可双击运行仓库根目录下的 [build-app.bat](./build-app.bat)。详细打包指引与故障排除见 [打包说明](./打包说明.md)。
 
----
+该命令用于完成项目发布构建，并生成相应的 Windows 发布文件。
 
-## 📚 详细文档导航
+当前发布目标包括：
 
-| 文档名称 | 内容描述 |
-|---|---|
-| 📖 [文档导航中心 (docs/README.md)](./docs/README.md) | 全套文档索引与常用命令速查。 |
-| 🛠️ [中文开发文档 (DevDoc_CN.md)](./WindowsNetworkConfigTool_DevDoc_CN.md) | 深度讲解系统分层架构、IPC 数据契约、事务补偿与状态机设计。 |
-| 🌐 [English Developer Guide (DevDoc_EN.md)](./WindowsNetworkConfigTool_DevDoc_EN.md) | 英文版系统设计架构、IPC 接口规范与开发维护指南。 |
-| 📦 [打包发布说明 (打包说明.md)](./打包说明.md) | 环境配置、安装包构建机制、哈希指纹校验与验收测试规范。 |
-| 🛡️ [已知限制与技术边界 (docs/known-limitations.md)](./docs/known-limitations.md) | 说明 UAC 提权机制、非原子事务恢复边界、DoH 系统级影响与系统约束。 |
-| 🧪 [验证记录与测试报告 (docs/verification.md)](./docs/verification.md) | 涵盖 17 项单元测试、12 项有状态回归、18 项功能回归、审计整改闭环与推荐验收清单。 |
-| 🔬 [回归测试说明 (tests/regression/ipv6/README.md)](./tests/regression/ipv6/README.md) | 隔离探针设计、受控 IO 故障模拟与回归测试执行机制。 |
-| 📄 [开源许可证 (LICENSE)](./LICENSE) | MIT 开源许可证文本。 |
+- 前端生产构建
+- Windows 便携 EXE
+- MSI 安装包
+- NSIS 安装包
+- `releases/` 发布文件
 
----
+也可以运行项目根目录中的：
 
-## 📄 开源许可证
+```text
+build-app.bat
+```
 
-本项目基于 [MIT License](./LICENSE) 协议开源。
+详细的构建流程、发布文件生成方式以及故障排除方法，请参阅：
+
+[打包说明.md](https://chatgpt.com/c/打包说明.md)
+
+------
+
+# 📚 项目文档
+
+项目包含开发、构建、测试以及已知限制等详细文档。
+
+| 文档                                                         | 说明                                               |
+| ------------------------------------------------------------ | -------------------------------------------------- |
+| [文档导航中心](https://chatgpt.com/c/docs/README.md)         | 项目文档总索引以及常用命令速查                     |
+| [中文开发文档](https://chatgpt.com/c/WindowsNetworkConfigTool_DevDoc_CN.md) | 系统架构、IPC 数据契约、网络配置流程及状态恢复设计 |
+| [English Developer Guide](https://chatgpt.com/c/WindowsNetworkConfigTool_DevDoc_EN.md) | English development and architecture documentation |
+| [打包发布说明](https://chatgpt.com/c/打包说明.md)            | 开发环境、安装包构建、发布流程及完整性校验         |
+| [已知限制与技术边界](https://chatgpt.com/c/docs/known-limitations.md) | UAC、网络配置恢复、DoH 以及 Windows 系统相关限制   |
+| [验证记录与测试报告](https://chatgpt.com/c/docs/verification.md) | 单元测试、回归测试、功能验证以及验收记录           |
+| [回归测试说明](https://chatgpt.com/c/tests/regression/ipv6/README.md) | IPv6、故障注入及相关回归测试机制                   |
+| [MIT License](https://chatgpt.com/c/LICENSE)                 | 项目开源许可证                                     |
+
+------
+
+# 🏗️ 技术栈
+
+项目主要使用：
+
+- **Vue 3** — 前端界面
+- **TypeScript** — 前端业务逻辑及类型系统
+- **Vite** — 前端开发与构建
+- **Tauri** — Windows 桌面应用框架
+- **Rust** — 原生系统功能与网络配置逻辑
+- **PowerShell / netsh / CIM** — Windows 网络配置与状态查询
+
+------
+
+# ⚠️ 注意事项
+
+本工具会直接修改 Windows 网络配置。
+
+使用前请注意：
+
+- 建议使用管理员权限运行；
+- 修改静态 IP 前请确认 IP 地址、子网掩码/前缀长度及网关填写正确；
+- 修改 DNS 前请确认 DNS 服务器可用；
+- 远程桌面或其他远程管理环境下修改网络参数可能导致连接中断；
+- VPN、虚拟机、代理软件以及第三方安全软件可能改变 Windows 网络配置行为；
+- DoH 的实际可用情况与 Windows 版本、DNS 服务商以及系统网络环境有关。
+
+------
+
+# 📄 License
+
+本项目基于 **MIT License** 开源。
+
+详细内容请参阅：
+
+[LICENSE](https://chatgpt.com/c/LICENSE)
