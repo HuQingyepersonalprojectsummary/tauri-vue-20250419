@@ -1,7 +1,3 @@
-# Windows 网络配置工具 (Windows Network Config Tool)
-
-# Windows 网络配置工具 (Windows Network Config Tool)
-
 ![Tauri](https://img.shields.io/badge/Tauri-1.5-24C8D8?style=flat-square&logo=tauri&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue-3.4-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -90,6 +86,7 @@ IPv4 地址、IPv4 DNS、IPv6 地址和 IPv6 DNS 可以分别设置。
   &nbsp;&nbsp;
   <img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="界面预览 B" width="42%" />
 </div>
+
 
 ## 📦 下载
 
