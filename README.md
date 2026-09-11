@@ -1,7 +1,6 @@
 # Windows 网络配置工具 (Windows Network Config Tool)
 
 <div align="center">
-
 ![Tauri](https://img.shields.io/badge/Tauri-1.5-24C8D8?style=flat-square&logo=tauri&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -11,7 +10,11 @@
 
 <p>基于 Vue 3、TypeScript、Rust 与 Tauri 1 构建的现代化 Windows 网络适配器管理工具。<br/>提供高可靠的 IPv4、IPv6、DNS、DoH 配置读写、特权前置校验与自动化逆向事务补偿。</p>
 
-<img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="Windows 网络配置工具界面预览" width="460" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);" />
+<img src="./assets/PixPin_2025-04-22_20-36-01.png" alt="Windows 网络配置工具界面预览A" width="460" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);" />
+
+</div>
+
+<img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="Windows 网络配置工具界面预览B" width="460" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);" />
 
 </div>
 
