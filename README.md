@@ -83,7 +83,11 @@ IPv4 地址、IPv4 DNS、IPv6 地址和 IPv6 DNS 可以分别设置。
 
 ## 📸 界面预览
 
-------
+<div align="center">
+  <img src="./assets/PixPin_2025-04-22_20-36-01.png" alt="界面预览 A" width="42%" />
+  &nbsp;&nbsp;
+  <img src="./assets/PixPin_2025-04-22_20-35-34.png" alt="界面预览 B" width="42%" />
+</div>
 
 ## 📦 下载
 
