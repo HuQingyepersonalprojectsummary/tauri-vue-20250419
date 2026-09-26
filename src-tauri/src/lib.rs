@@ -129,8 +129,9 @@ pub mod commands {
 
     /// 问候测试指令
     #[tauri::command]
-    pub fn greet(name: &str) -> String {
-        format!("Hello, {}! You've been greeted from Rust!", name)
+    pub fn greet(name: String) -> String {
+        let msg = format!("Hello, {}! You've been greeted from Rust!", name);
+        msg
     }
 
     /// 异步获取系统中所有物理与虚拟网络适配器列表 (A-04)

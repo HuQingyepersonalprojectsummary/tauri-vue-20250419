@@ -1,28 +1,28 @@
 {
   "version": "0.1.0",
   "architecture": "x64",
-  "generatedAt": "2026-09-11T01:02:23.8920845+08:00",
+  "generatedAt": "2026-09-26T18:54:43.1033109+08:00",
   "signed": false,
   "artifacts": [
     {
       "file": "Windows网络配置工具.exe",
       "bytes": 2108416,
-      "sha256": "1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795"
+      "sha256": "241ee97429b203cde24ae5569606cdb20a9bc91a17658ffd98846a38aa6a2d99"
     },
     {
       "file": "Windows_Network_Config_Tool_v0.1.0.exe",
       "bytes": 2108416,
-      "sha256": "1dafb2302bb0b7665f4bb2606038af00f0d7af2af880f1c0c79c427ba2304795"
+      "sha256": "241ee97429b203cde24ae5569606cdb20a9bc91a17658ffd98846a38aa6a2d99"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64_zh-CN.msi",
       "bytes": 1470464,
-      "sha256": "377faa39dbf1b6a23fccf8932746c752a6487096e8c589fee197b70b0e5f7ba7"
+      "sha256": "3ea02668b99eadc0b8ebbcaaa883b142d0633cdbc6420a8f33ea4b2e8d7c74da"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64-setup.exe",
-      "bytes": 955574,
-      "sha256": "5274415612af90a2ec32329a9147e5f2f7dae55253b59c9fca132b7c52f01009"
+      "bytes": 957841,
+      "sha256": "f944752f37eda6c22a7c2a4a10f30a27572f6de7b6fe87c17f04885c22dfe7da"
     }
   ],
   "sourceFiles": [
@@ -32,7 +32,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "fccef829e829dcaab46048c04ac21e2de24cfd671fe7228280546f375e1213b7"
+      "sha256": "2d9f700f63a559a8541fa4fee7b1bea3d5a4211a0bb8071beaf4f98816772962"
     },
     {
       "path": "public/tauri.svg",
@@ -124,7 +124,7 @@
     },
     {
       "path": "src-tauri/src/lib.rs",
-      "sha256": "af7adebebc85291740dc82933826f3db7d241662fe13047cfea56acdcbe45023"
+      "sha256": "5498bfcd9505a06bb27cef719f4cb3c6dc21fa07cb9a71653cd86b9e10a6b8ff"
     },
     {
       "path": "src-tauri/src/main.rs",
@@ -132,7 +132,7 @@
     },
     {
       "path": "src-tauri/src/platform.rs",
-      "sha256": "f2a69de11e298a73a4beea3a45ed5be930299426d0924b2d68142104e64a3b3e"
+      "sha256": "fd7b3ac7f61cf739cb0e4bfcf18a4a221479470202185f99540da94575eb4d29"
     },
     {
       "path": "src-tauri/tauri.conf.json",

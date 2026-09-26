@@ -340,9 +340,22 @@ npm run release
 build-app.bat
 ```
 
-详细的构建流程、发布文件生成方式以及故障排除方法，请参阅：
+### 商业级加壳与防护打包 (Themida Strict Release)
 
-[📦 打包发布说明](https://chatgpt.com/c/打包说明.md)
+项目集成了 **Themida (v3.2.6.0 x64)** 商业级严苛加壳工作流，支持一键生成多虚拟机代码虚拟化、反调试、防转储与 UAC 自动提权的商业交付包：
+
+```powershell
+# 一键执行全套商业级编译、加壳与清单生成
+npm run build:commercial
+
+# 或直接运行批处理
+build-commercial.bat
+```
+
+详细的构建流程、Themida 严苛策略配置以及发布文件校验，请参阅：
+
+- [📦 打包发布说明](./打包说明.md)
+- [🔒 Themida 商业加壳与保护配置指南](./docs/themida-protection-guide.md)
 
 ------
 
@@ -352,14 +365,15 @@ build-app.bat
 
 | 文档                                                         | 说明                                               |
 | ------------------------------------------------------------ | -------------------------------------------------- |
-| 📖 [文档导航中心](https://chatgpt.com/c/docs/README.md)       | 项目文档总索引以及常用命令速查                     |
-| 🛠️ [中文开发文档](https://chatgpt.com/c/WindowsNetworkConfigTool_DevDoc_CN.md) | 系统架构、IPC 数据契约、网络配置流程及状态恢复设计 |
-| 🌐 [English Developer Guide](https://chatgpt.com/c/WindowsNetworkConfigTool_DevDoc_EN.md) | English development and architecture documentation |
-| 📦 [打包发布说明](https://chatgpt.com/c/打包说明.md)          | 开发环境、安装包构建、发布流程及完整性校验         |
-| 🛡️ [已知限制与技术边界](https://chatgpt.com/c/docs/known-limitations.md) | UAC、网络配置恢复、DoH 以及 Windows 系统相关限制   |
-| 🧪 [验证记录与测试报告](https://chatgpt.com/c/docs/verification.md) | 单元测试、回归测试、功能验证以及验收记录           |
-| 🔬 [回归测试说明](https://chatgpt.com/c/tests/regression/ipv6/README.md) | IPv6、故障注入及相关回归测试机制                   |
-| 📄 [MIT License](https://chatgpt.com/c/LICENSE)               | 项目开源许可证                                     |
+| 📖 [文档导航中心](./docs/README.md)                           | 项目文档总索引以及常用命令速查                     |
+| 🛠️ [中文开发文档](./WindowsNetworkConfigTool_DevDoc_CN.md)     | 系统架构、IPC 数据契约、网络配置流程及状态恢复设计 |
+| 🌐 [English Developer Guide](./WindowsNetworkConfigTool_DevDoc_EN.md) | English development and architecture documentation |
+| 📦 [打包发布说明](./打包说明.md)                              | 开发环境、安装包构建、发布流程及完整性校验         |
+| 🔒 [Themida 商业加壳指南](./docs/themida-protection-guide.md) | 商业级防逆向、代码虚拟化与 UAC 清单配置指南        |
+| 🛡️ [已知限制与技术边界](./docs/known-limitations.md)         | UAC、网络配置恢复、DoH 以及 Windows 系统相关限制   |
+| 🧪 [验证记录与测试报告](./docs/verification.md)             | 单元测试、回归测试、功能验证以及验收记录           |
+| 🔬 [回归测试说明](./tests/regression/ipv6/README.md)         | IPv6、故障注入及相关回归测试机制                   |
+| 📄 [MIT License](./LICENSE)                                 | 项目开源许可证                                     |
 
 ------
 
@@ -401,6 +415,4 @@ build-app.bat
 
 本项目基于 **MIT License** 开源。
 
-详细许可证内容请参阅：
-
-[LICENSE](https://chatgpt.com/c/LICENSE)
+[LICENSE](./LICENSE)

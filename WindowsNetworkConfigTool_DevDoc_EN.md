@@ -32,8 +32,8 @@ Use Yarn Classic for dependency installation; npm is used to run scripts. Do not
 | src-tauri/src/main.rs | Desktop entry point and release GUI subsystem |
 | src-tauri/tauri.conf.json | Product/version, window, security and installer configuration |
 | tests/regression/ipv6 | Isolated production-code fault injection |
-| scripts | Packaging and artifact export |
-| releases | Portable executable, installers, checksums and source fingerprints |
+| scripts | Build, release export, and Themida commercial protection scripts |
+| releases | Portable executable, installers, checksums, fingerprints, and commercial release folder |
 
 Keep domain validation independent of OS IO. Add native operations in platform, route frontend calls through networkClient, and preserve separate network, recovery and storage failure states.
 
@@ -46,7 +46,7 @@ Rust serde uses camelCase. Rust and TypeScript DTOs are maintained manually: upd
 | get_network_adapters | none | AdapterInfo[] |
 | get_current_config | `{ adapterName }` | AdapterSnapshot |
 | apply_adapter_ipv4_config | `{ cfg }` | OperationResult |
-| greet | `{ name }` | Legacy template greeting, unrelated to network configuration |
+| greet | `{ name }` | Legacy template greeting, typed with owned String for IDE rust-analyzer |
 
 The apply command retains its historical IPv4 name but also handles IPv6, DNS and DoH.
 

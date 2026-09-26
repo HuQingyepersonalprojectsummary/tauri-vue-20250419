@@ -12,6 +12,8 @@
     "test:regression": "node tests/regression/ipv6/run.mjs",
     "test:functional": "node tests/regression/functional/frontend.mjs && node tests/regression/functional/native.mjs",
     "release": "pwsh -NoProfile -File scripts/build-release.ps1",
+    "protect:themida": "pwsh -NoProfile -File scripts/protect-themida.ps1",
+    "build:commercial": "pwsh -NoProfile -File scripts/build-commercial-release.ps1",
     "clean": "rimraf src-tauri/target dist"
   },
   "dependencies": {

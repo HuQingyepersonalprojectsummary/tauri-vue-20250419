@@ -32,8 +32,8 @@ npm run tauri -- dev
 | src-tauri/src/main.rs | 桌面入口；release 使用 Windows GUI 子系统 |
 | src-tauri/tauri.conf.json | 窗口、安全策略、产品名、版本和安装包设置 |
 | tests/regression/ipv6 | 生产事务与 composable 的隔离故障注入回归 |
-| scripts | 构建与产物导出脚本 |
-| releases | EXE/MSI/NSIS、SHA-256 与源码指纹 |
+| scripts | 构建与产物导出脚本、Themida 商业加壳脚本 |
+| releases | EXE/MSI/NSIS、SHA-256、源码指纹与商业发布交付目录 |
 
 保持领域校验不依赖系统 IO；新的系统操作放入 platform 层；前端通过 networkClient 调用，避免散落 invoke。网络操作必须保留失败原因，并区分应用失败、恢复失败和存储失败。
 
@@ -46,7 +46,7 @@ Rust 使用 serde camelCase 与前端交互。DTO 目前由 Rust 和 TypeScript 
 | get_network_adapters | 无 | AdapterInfo[] |
 | get_current_config | `{ adapterName: string }` | AdapterSnapshot |
 | apply_adapter_ipv4_config | `{ cfg: Ipv4Config }` | OperationResult |
-| greet | `{ name: string }` | 模板遗留问候字符串；不属于网络业务 API |
+| greet | `{ name: string }` | 模板遗留问候字符串；使用拥有所有权的 String 类型以兼容 IDE rust-analyzer |
 
 `apply_adapter_ipv4_config` 为兼容保留的命令名，实际支持 IPv4、IPv6、DNS 与 DoH。
 

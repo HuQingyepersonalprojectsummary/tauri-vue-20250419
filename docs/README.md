@@ -12,6 +12,7 @@
 | 🛠️ [中文开发文档](../WindowsNetworkConfigTool_DevDoc_CN.md) | 深入讲解系统架构、模块职责、IPC 契约、事务补偿与状态机设计。 |
 | 🌐 [English Developer Guide](../WindowsNetworkConfigTool_DevDoc_EN.md) | 英文版系统架构设计与开发者开发指南。 |
 | 📦 [打包与发布说明](../打包说明.md) | 详细的环境搭建、便携包/MSI/NSIS 打包、校验流程与故障排除。 |
+| 🔒 [Themida 商业加壳指南](./themida-protection-guide.md) | 针对本项目的最严苛商业化加壳、代码虚拟化与 UAC 提权配置手册。 |
 | 🛡️ [已知限制与技术边界](./known-limitations.md) | 明确说明 UAC 提权机制、事务回滚边界、DoH 系统级影响及底层系统约束。 |
 | 🧪 [验证记录与测试报告](./verification.md) | 记录自动化测试、有状态故障注入测试、审计整改闭环与实机验收清单。 |
 | 🔬 [回归测试套件说明](../tests/regression/ipv6/README.md) | 详细介绍隔离测试夹具、故障注入探针设计与回归用例执行方式。 |
@@ -43,8 +44,11 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline              
 npm run test:regression                                                              # 有状态事务与故障注入回归测试
 npm run test:functional                                                              # 功能逻辑与意图保持回归测试 (18 项)
 
-# 6. 一键构建并导出全部发布文件 (便携 EXE、MSI、NSIS、校验和及指纹)
+# 6. 一键构建并导出全部标准发布文件 (便携 EXE、MSI、NSIS、校验和及指纹)
 npm run release
+
+# 7. 一键全套商业化严苛加壳打包 (生产编译 + Themida 虚拟机/反调试保护 + 商业交付包)
+npm run build:commercial
 ```
 
 ---

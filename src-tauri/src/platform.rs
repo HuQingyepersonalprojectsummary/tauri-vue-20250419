@@ -152,6 +152,7 @@ fn decode_output_bytes(bytes: &[u8]) -> String {
 const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024; // 2MB 上限，防止无限管道缓冲引发 OOM
 
 #[cfg(windows)]
+#[allow(non_camel_case_types)]
 mod job_control {
     use std::ffi::c_void;
     use std::os::windows::io::AsRawHandle;
@@ -1209,14 +1210,13 @@ pub fn get_adapter_snapshot(adapter_target: &str) -> Result<AdapterSnapshot, Str
                     template,
                     allow_fallback,
                 });
-            } else {
-                // Windows 11 环境下单网卡未注册该 DNS 的 DoH，在系统设置中即为“关”
-                return Some(DohConfig {
-                    mode: "off".to_string(),
-                    template: String::new(),
-                    allow_fallback: true,
-                });
             }
+            // Windows 11 环境下单网卡未注册该 DNS 的 DoH，在系统设置中即为“关”
+            return Some(DohConfig {
+                mode: "off".to_string(),
+                template: String::new(),
+                allow_fallback: true,
+            });
         }
 
         // 回退兼容：Windows 10 或单元测试 mock 快照，从全局 dohSettings 提取
@@ -2994,10 +2994,9 @@ pub fn apply_adapter_ipv4_config_transactional(
                     final_snapshot = Some(s);
                     verify_err = None;
                     break;
-                } else {
-                    verify_err = Some(format!("读回校验未通过 ({})", reasons.join(", ")));
-                    final_snapshot = Some(s);
                 }
+                verify_err = Some(format!("读回校验未通过 ({})", reasons.join(", ")));
+                final_snapshot = Some(s);
             }
             Err(e) => {
                 verify_err = Some(format!("读回配置快照失败: {}", e));
