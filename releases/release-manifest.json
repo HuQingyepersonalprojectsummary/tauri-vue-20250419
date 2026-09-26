@@ -1,28 +1,28 @@
 {
   "version": "0.1.0",
   "architecture": "x64",
-  "generatedAt": "2026-09-26T18:54:43.1033109+08:00",
+  "generatedAt": "2026-09-26T19:04:52.1668093+08:00",
   "signed": false,
   "artifacts": [
     {
       "file": "Windows网络配置工具.exe",
       "bytes": 2108416,
-      "sha256": "241ee97429b203cde24ae5569606cdb20a9bc91a17658ffd98846a38aa6a2d99"
+      "sha256": "1b602e3f577c3aa71def2d15d9388b9508bd837166ef9a45e8ab0881575ab091"
     },
     {
       "file": "Windows_Network_Config_Tool_v0.1.0.exe",
       "bytes": 2108416,
-      "sha256": "241ee97429b203cde24ae5569606cdb20a9bc91a17658ffd98846a38aa6a2d99"
+      "sha256": "1b602e3f577c3aa71def2d15d9388b9508bd837166ef9a45e8ab0881575ab091"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64_zh-CN.msi",
       "bytes": 1470464,
-      "sha256": "3ea02668b99eadc0b8ebbcaaa883b142d0633cdbc6420a8f33ea4b2e8d7c74da"
+      "sha256": "24240462aaaca3c99723245dc60d7c7b4a058f0ee4c5b961ea5da0ec12c500fd"
     },
     {
       "file": "Windows网络配置工具_0.1.0_x64-setup.exe",
-      "bytes": 957841,
-      "sha256": "f944752f37eda6c22a7c2a4a10f30a27572f6de7b6fe87c17f04885c22dfe7da"
+      "bytes": 956085,
+      "sha256": "648e37f68e7ce4397cfa3f37d0bcb7d5acd9fa974fb492226a1666e475ee7a8b"
     }
   ],
   "sourceFiles": [
